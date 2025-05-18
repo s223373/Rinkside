@@ -35,6 +35,21 @@ struct NHLRosterView: View {
                     .cornerRadius(10)
                     .padding()
                 }
+                NavigationLink(destination: NHLClubStatsView(teamId: teamId)) {
+                    HStack {
+                        Image(systemName: "chart.bar")
+                            .font(.title)
+                        Text("View Team Stats")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.green)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                    .padding(.horizontal)
+                }
                 if isLoading {
                     ProgressView("Loading Roster...")
                         .padding()

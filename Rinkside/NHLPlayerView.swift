@@ -12,6 +12,21 @@ struct NHLPlayerView: View {
     @State private var compareName = ""
     @State private var navigateToCompare = false
     @State private var secondPlayerId: Int?
+    
+    var playerRating: Int? {
+        guard let player = playerInfo,
+              let latestSeason = player.seasonTotals?
+                .filter({ $0.gameTypeId == 2 })
+                .sorted(by: { ($0.season ?? 0) > ($1.season ?? 0) })
+                .first else {
+            return nil
+        }
+        
+        let raw = PlayerRatingEngine.calculateRawSkaterScore(for: latestSeason)
+        
+        // Temporary scaling using default mean and std dev (you could make this dynamic later)
+        return PlayerRatingEngine.scaleToRating(rawScore: raw, mean: 60, stdDev: 10)
+    }
 
     private let playerId: Int
     
@@ -32,12 +47,12 @@ struct NHLPlayerView: View {
             .hidden()
             if let player = playerInfo {
                 VStack(spacing: 20) {
-                    PlayerHeaderView(player: player)
+                    PlayerHeaderView(player: player, rating: playerRating)
                     PlayerDetailsView(player: player)
                     PlayerStatsView(player: player)
                 }
                 .padding()
-            } else {
+            }else {
                 ProgressView("Loading player...")
                     .onAppear {
                         decodePlayer(playerId: playerId)
@@ -109,6 +124,7 @@ struct NHLPlayerView: View {
 
 struct PlayerHeaderView: View {
     let player: NHLPlayer
+    let rating: Int?
     
     var body: some View {
         VStack {
@@ -122,18 +138,26 @@ struct PlayerHeaderView: View {
                     Color.gray.opacity(0.1).frame(maxWidth: .infinity, maxHeight: 300)
                 }
                 
-                AsyncImage(url: URL(string: player.headshot)) { image in
-                    image.resizable()
-                        .scaledToFit()
-                        .frame(width: 150, height: 150)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.blue, lineWidth: 4))
-                        .shadow(radius: 10)
-                } placeholder: {
-                    Circle().fill(Color.gray.opacity(0.3))
-                        .frame(width: 150, height: 150)
-                        .overlay(ProgressView())
+                ZStack(alignment: .bottomTrailing) {
+                    AsyncImage(url: URL(string: player.headshot)) { image in
+                        image.resizable()
+                            .scaledToFit()
+                            .frame(width: 150, height: 150)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.blue, lineWidth: 4))
+                            .shadow(radius: 10)
+                    } placeholder: {
+                        Circle().fill(Color.gray.opacity(0.3))
+                            .frame(width: 150, height: 150)
+                            .overlay(ProgressView())
+                    }
+                    
+                    if let rating = rating {
+                        RatingCircleView(rating: rating)
+                            .offset(x: 8, y: 8) // a little padding outside the headshot circle
+                    }
                 }
+                .frame(width: 150, height: 150)
             }
             
             VStack(alignment: .center, spacing: 8) {
@@ -153,6 +177,43 @@ struct PlayerHeaderView: View {
         }
     }
 }
+
+struct RatingCircleView: View {
+    var rating: Int
+    
+    private var progress: Double {
+        Double(rating) / 100.0
+    }
+    
+    var body: some View {
+        ZStack {
+            // Solid white background circle
+            Circle()
+                .fill(Color.white)
+                .frame(width: 40, height: 40)
+
+            // Gray track ring
+            Circle()
+                .stroke(Color.gray.opacity(0.3), lineWidth: 6)
+                .frame(width: 40, height: 40)
+
+            // Progress ring
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(Color.blue, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .frame(width: 40, height: 40)
+                .animation(.easeOut(duration: 0.5), value: progress)
+
+            // Rating number in center
+            Text("\(rating)")
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundColor(.black)
+        }
+    }
+}
+
 
 struct PlayerDetailsView: View {
     let player: NHLPlayer
@@ -350,6 +411,7 @@ func formatSeason(_ seasonInt: Int?) -> String {
     let endYear = seasonStr.suffix(4)
     return "\(startYear)-\(endYear)"
 }
+
 
 
 

@@ -162,6 +162,7 @@ struct NHLGameDetail: Codable, CustomStringConvertible {
 }
 
 struct NHLSeasonTotal: Codable, CustomStringConvertible {
+    
     let gameTypeId: Int?
     let gamesPlayed: Int?
     let goalsAgainstAvg: Double?

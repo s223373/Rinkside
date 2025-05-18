@@ -68,7 +68,7 @@ struct NHLStats: Codable, CustomStringConvertible {
 
 struct NHLPlayerFeaturedStats: Codable, CustomStringConvertible {
     let season: Int
-    let regularSeason: NHLPlayerFeaturedStatsRegularSeason
+    let regularSeason: NHLPlayerFeaturedStatsRegularSeason?
     
     enum CodingKeys: String, CodingKey {
         case season = "season"
