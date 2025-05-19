@@ -7,7 +7,7 @@
 import SwiftUI
 
 struct NHLFantasyTeamHubView: View {
-    private var fantasyTeam: NHLFantasyTeam
+    @ObservedObject private var fantasyTeam: NHLFantasyTeam
     
     
     public init(fantasyTeam: NHLFantasyTeam) {
@@ -18,7 +18,7 @@ struct NHLFantasyTeamHubView: View {
         VStack {
             Text(fantasyTeam.getName())
             if (!fantasyTeam.getCompletedDraft()) {
-                NavigationLink(destination: NHLFantasyDraftView()) {
+                NavigationLink(destination: NHLFantasyDraftView(fantasyTeam: fantasyTeam)) {
                     HStack {
                         Text("Complete Draft")
                             .font(.title2)
@@ -72,6 +72,6 @@ struct PlayerFantasyRow: View {
 }
 
 func playerShortDescriptionFantasy(from player: NHLPlayer) -> String {
-    return "#\(player.sweaterNumber ?? 0) | \(calculateAge(from: player.birthDate)!) yo | \(player.position) | \(player.weightInPounds) lbs | \(getHeight(from: player.heightInInches)) in"
+    return "#\(player.sweaterNumber) | \(calculateAge(from: player.birthDate ?? "2000-01-01") ?? 0) yo | \(player.position) | \(player.weightInPounds) lbs | \(getHeight(from: player.heightInInches)) in"
     
 }

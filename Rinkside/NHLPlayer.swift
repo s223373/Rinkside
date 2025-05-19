@@ -25,7 +25,7 @@ struct NHLPlayer: Codable, CustomStringConvertible {
     let heightInCentimeters: Int
     let weightInPounds: Int
     let weightInKilograms: Int
-    let birthDate: String
+    let birthDate: String?
     let birthCity: NHLType
     let birthStateProvince: NHLType?
     let birthCountry: String
@@ -238,13 +238,13 @@ struct NHLPlayerSkaterStats: Codable, CustomStringConvertible {
     let id: Int
     let firstName: NHLType
     let lastName: NHLType
-    let sweaterNumber: Int
+    let sweaterNumber: Int?
     let headshot: String
     let teamAbbrev: String
     let teamName: NHLType
     let teamLogo: String
     let position: String
-    let value: Int
+    let value: Double
     
     enum CodingKeys: String, CodingKey {
         case id = "id"

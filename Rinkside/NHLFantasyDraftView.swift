@@ -7,9 +7,11 @@
 import SwiftUI
 
 struct NHLFantasyDraftView: View {
+    
     @State private var availableSkaters: NHLPlayerSkaterStatsLeaders?
     @State private var availableGoalies: NHLPlayerGoalieStatsLeaders?
-    @State private var isLoading: Bool = true
+    @State private var isSkaterLoading: Bool = true
+    @State private var isGoalieLoading: Bool = true
     @State private var selectedSkaterCategory: String = "Goals"
     @State private var selectedGoalieCategory: String = "Wins"
     
@@ -17,6 +19,12 @@ struct NHLFantasyDraftView: View {
     @State private var gameType: Int = 2
     @State private var statsSkaterType: String = "goals"
     @State private var statsGoalieType: String = "wins"
+    
+    private var fantasyTeam: NHLFantasyTeam
+    
+    public init(fantasyTeam: NHLFantasyTeam) {
+        self.fantasyTeam = fantasyTeam
+    }
     
     
     private let skaterCategories = ["Goals", "Assists", "Points"]
@@ -33,14 +41,14 @@ struct NHLFantasyDraftView: View {
                     }
                     .pickerStyle(SegmentedPickerStyle())
                     .padding()
-                    if isLoading {
+                    if isSkaterLoading {
                         ProgressView("Loading...")
                     } else {
                         if (selectedSkaterCategory == "Goals") {
                             Section(header: Text("Goal Leaders")) {
                                 List {
                                     ForEach(availableSkaters?.goals ?? [], id: \.id) { player in
-                                        playerRow(player: player, statsType: "goals")
+                                        playerRow(player: player, statsType: "goals", fantasyTeam: fantasyTeam)
                                     }
                                 }
                             }
@@ -48,7 +56,7 @@ struct NHLFantasyDraftView: View {
                             Section(header: Text("Assist Leaders")) {
                                 List {
                                     ForEach(availableSkaters?.assists ?? [], id: \.id) { player in
-                                        playerRow(player: player, statsType: "assists")
+                                        playerRow(player: player, statsType: "assists", fantasyTeam: fantasyTeam)
                                     }
                                 }
                             }
@@ -56,7 +64,7 @@ struct NHLFantasyDraftView: View {
                             Section(header: Text("Point Leaders")) {
                                 List {
                                     ForEach(availableSkaters?.points ?? [], id: \.id) { player in
-                                        playerRow(player: player, statsType: "points")
+                                        playerRow(player: player, statsType: "points", fantasyTeam: fantasyTeam)
                                     }
                                 }
                             }
@@ -73,14 +81,14 @@ struct NHLFantasyDraftView: View {
                     }
                     .pickerStyle(SegmentedPickerStyle())
                     .padding()
-                    if isLoading {
+                    if isGoalieLoading {
                         ProgressView("Loading...")
                     } else {
                         if (selectedGoalieCategory == "Wins") {
                             Section(header: Text("Wins Leaders")) {
                                 List {
                                     ForEach(availableGoalies?.wins ?? [], id: \.id) { player in
-                                        playerRow(player: player, statsType: "wins")
+                                        playerRow(player: player, statsType: "wins", fantasyTeam: fantasyTeam)
                                     }
                                 }
                             }
@@ -88,7 +96,7 @@ struct NHLFantasyDraftView: View {
                             Section(header: Text("Save % Leaders")) {
                                 List {
                                     ForEach(availableGoalies?.savePctg ?? [], id: \.id) { player in
-                                        playerRow(player: player, statsType: "")
+                                        playerRow(player: player, statsType: "", fantasyTeam: fantasyTeam)
                                     }
                                 }
                             }
@@ -96,7 +104,7 @@ struct NHLFantasyDraftView: View {
                             Section(header: Text("Goals Against Average Leaders")) {
                                 List {
                                     ForEach(availableGoalies?.goalsAgainstAverage ?? [], id: \.id) { player in
-                                        playerRow(player: player, statsType: "GAA")
+                                        playerRow(player: player, statsType: "GAA", fantasyTeam: fantasyTeam)
                                     }
                                 }
                             }
@@ -108,6 +116,7 @@ struct NHLFantasyDraftView: View {
             }
         } .onAppear() {
             decodeAvailableSkaters(season: season, gameType: gameType, statsType: statsSkaterType)
+            decodeAvailableGoalies(season: season, gameType: gameType, statsType: statsGoalieType)
         } .onChange(of: selectedSkaterCategory) { newValue in
             switch newValue {
             case "Goals":
@@ -119,7 +128,7 @@ struct NHLFantasyDraftView: View {
             default:
                 statsSkaterType = "goals"
             }
-            isLoading = true
+            isSkaterLoading = true
             decodeAvailableSkaters(season: season, gameType: gameType, statsType: statsSkaterType)
         } .onChange(of: selectedGoalieCategory) { newValue in
             switch newValue {
@@ -132,7 +141,7 @@ struct NHLFantasyDraftView: View {
             default:
                 statsSkaterType = "wins"
             }
-            isLoading = true
+            isGoalieLoading = true
             decodeAvailableGoalies(season: season, gameType: gameType, statsType: statsSkaterType)
         }
     }
@@ -144,7 +153,7 @@ struct NHLFantasyDraftView: View {
                 print("Cannot create available players stats URL for \(season)")
                 return
             }
-            print("Loading roster for \(season) with URL \(url.absoluteString)")
+            print("Loading players stats leaders for \(season) with URL \(url.absoluteString)")
             
             let dataTask = URLSession.shared.dataTask(with: url) { dataW, response, error in
                 if let error = error {
@@ -161,7 +170,7 @@ struct NHLFantasyDraftView: View {
                     let result = try decoder.decode(NHLPlayerSkaterStatsLeaders.self, from: dataL)
                     DispatchQueue.main.async {
                         availableSkaters = result
-                        isLoading = false
+                        isSkaterLoading = false
                     }
                 } catch {
                     print(error)
@@ -174,10 +183,10 @@ struct NHLFantasyDraftView: View {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             guard let url = NHLResource.goalieStatsLeadersURL(season: season, gameType: gameType, statsType: statsType) else {
-                print("Cannot create available players stats URL for \(season)")
+                print("Cannot create available goalies stats URL for \(season)")
                 return
             }
-            print("Loading roster for \(season) with URL \(url.absoluteString)")
+            print("Loading goalie stats leaders for \(season) with URL \(url.absoluteString)")
             
             let dataTask = URLSession.shared.dataTask(with: url) { dataW, response, error in
                 if let error = error {
@@ -194,7 +203,7 @@ struct NHLFantasyDraftView: View {
                     let result = try decoder.decode(NHLPlayerGoalieStatsLeaders.self, from: dataL)
                     DispatchQueue.main.async {
                         availableGoalies = result
-                        isLoading = false
+                        isGoalieLoading = false
                     }
                 } catch {
                     print(error)
@@ -206,12 +215,27 @@ struct NHLFantasyDraftView: View {
         struct playerRow: View {
             let player: NHLPlayerSkaterStats
             let statsType: String
+            let fantasyTeam: NHLFantasyTeam
+            
+            
+            var trimmedString: String {
+                String(format: "%g", player.value)
+            }
+            
             var body: some View {
-                HStack {
-                    Text("\(player.firstName.def) \(player.lastName.def)")
-                    Spacer()
-                    Text("\(player.value) \(statsType)")
+                Button(action: {
+                    fantasyTeam.addPlayer(player)
+                    print("Player row tapped: \(player.firstName.def) \(player.lastName.def)")
+                }) {
+                    HStack {
+                        Text("\(player.firstName.def) \(player.lastName.def)")
+                        Spacer()
+                        Text("\(trimmedString) \(statsType)")
+                    }
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(PlainButtonStyle())
             }
         }
         

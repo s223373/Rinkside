@@ -6,15 +6,15 @@
 //
 import Foundation
 
-class NHLFantasyTeam: Identifiable, Codable, Equatable {
+class NHLFantasyTeam: Identifiable, Codable, Equatable, ObservableObject {
     static func == (lhs: NHLFantasyTeam, rhs: NHLFantasyTeam) -> Bool {
         lhs.id == rhs.id
     }
     
     var id: String
-    private var name: String
-    private var players: [NHLPlayer]  = []
-    private var completedDraft: Bool = false
+    @Published private var name: String
+    @Published private var players: [NHLPlayer]  = []
+    @Published private var completedDraft: Bool = false
     
     init(name: String) {
         id = UUID().uuidString
@@ -40,4 +40,53 @@ class NHLFantasyTeam: Identifiable, Codable, Equatable {
     public func setCompletedDraft(_ completedDraft: Bool) {
         self.completedDraft = completedDraft
     }
+    
+    public func addPlayer(_ player: NHLPlayerSkaterStats) {
+        let player = convertNHLPlayer(playerId: player.id)!
+        players.append(player)
+    }
+    
+    public func convertNHLPlayer(playerId: Int) -> NHLPlayer? {
+        var player: NHLPlayer = NHLResource.defaultNHLPlayer()
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let url = NHLResource.basePlayerLandingURL(for: playerId) else { return nil }
+        
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            guard let data = data else { return }
+            DispatchQueue.main.async {
+                do {
+                    player = try decoder.decode(NHLPlayer.self, from: data)
+                } catch {
+                    print(error)
+                }
+            }
+        }.resume()
+        return player
+    }
+    
+    enum CodingKeys: String, CodingKey {
+            case id
+            case name
+            case players
+            case completedDraft
+        }
+
+        required init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+
+            id = try container.decode(String.self, forKey: .id)
+            name = try container.decode(String.self, forKey: .name)
+            players = try container.decode([NHLPlayer].self, forKey: .players)
+            completedDraft = try container.decode(Bool.self, forKey: .completedDraft)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+
+            try container.encode(id, forKey: .id)
+            try container.encode(name, forKey: .name)
+            try container.encode(players, forKey: .players)
+            try container.encode(completedDraft, forKey: .completedDraft)
+        }
 }

@@ -221,8 +221,8 @@ struct PlayerDetailsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Player Details").font(.title2).fontWeight(.semibold)
-            DetailRow(label: "Born:", value: formatDate(player.birthDate))
-            DetailRow(label: "Age:", value: "\(calculateAge(from: player.birthDate) ?? 0) years old")
+            DetailRow(label: "Born:", value: formatDate(player.birthDate ?? "2001-01-01"))
+            DetailRow(label: "Age:", value: "\(calculateAge(from: player.birthDate ?? "2001-01-01") ?? 0) years old")
             DetailRow(label: "Height:", value: getHeight(from: player.heightInInches))
             DetailRow(label: "Weight:", value: "\(player.weightInPounds) lbs")
             
