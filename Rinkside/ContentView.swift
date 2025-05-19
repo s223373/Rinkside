@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    private var fantasyteamList: [NHLFantasyTeam] = []
+    @State private var fantasyteamList: [NHLFantasyTeam] = []
     
     var body: some View {
         NavigationView {
@@ -18,7 +18,7 @@ struct ContentView: View {
                             .fontWeight(.bold)
                             .padding(.top, 50)
                         
-                        Image("rinkside_logo") // Assuming you have a logo in assets
+                        Image("rinkside_logo") 
                             .resizable()
                             .scaledToFit()
                             .frame(width: 150, height: 150)
@@ -55,26 +55,32 @@ struct ContentView: View {
                             .shadow(radius: 5)
                         }
                         
-                        NavigationLink(destination: NHLFantasyListView(fantasyTeams: fantasyteamList)) {
-                            HStack {
-                                Image(systemName: "target")
-                                    .imageScale(.large)
-                                    .foregroundColor(.blue)
-                                Text("Fantasy Team")
-                                    .font(.title2)
-                                    .foregroundColor(.blue)
-                            }
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
-                            .shadow(radius: 5)
-                        }
-                        
-                        Spacer()
-                    }
-                    .navigationTitle("Rinkside")
-                    .padding()
-                }
+                        NavigationLink(destination: NHLFantasyListView(fantasyTeams: $fantasyteamList)) {
+                                            HStack {
+                                                Image(systemName: "target")
+                                                    .imageScale(.large)
+                                                    .foregroundColor(.blue)
+                                                Text("Fantasy Team")
+                                                    .font(.title2)
+                                                    .foregroundColor(.blue)
+                                            }
+                                            .padding()
+                                            .background(Color(.systemGray6))
+                                            .cornerRadius(12)
+                                            .shadow(radius: 5)
+                                        }
+
+                                        Spacer()
+                                    }
+                                    .navigationTitle("Rinkside")
+                                    .padding()
+                                }
+                                .onAppear {
+                                    fantasyteamList = FantasyTeamStorage.load()
+                                }
+                                .onChange(of: fantasyteamList) { newValue in
+                                    FantasyTeamStorage.save(newValue)
+                                }
         
     }
 }

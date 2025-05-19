@@ -233,3 +233,65 @@ struct NHLPersonShort: Codable, CustomStringConvertible {
         return "\(firstName) \(lastName)"
     }
 }
+
+struct NHLPlayerSkaterStats: Codable, CustomStringConvertible {
+    let id: Int
+    let firstName: NHLType
+    let lastName: NHLType
+    let sweaterNumber: Int
+    let headshot: String
+    let teamAbbrev: String
+    let teamName: NHLType
+    let teamLogo: String
+    let position: String
+    let value: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case id = "id"
+        case firstName = "firstName"
+        case lastName = "lastName"
+        case sweaterNumber = "sweaterNumber"
+        case headshot = "headshot"
+        case teamAbbrev = "teamAbbrev"
+        case teamName = "teamName"
+        case teamLogo = "teamLogo"
+        case position = "position"
+        case value = "value"
+    }
+    
+    var description: String {
+        return "\(id)"
+    }
+}
+
+struct NHLPlayerSkaterStatsLeaders: Codable, CustomStringConvertible {
+    let goals: [NHLPlayerSkaterStats]?
+    let assists: [NHLPlayerSkaterStats]?
+    let points: [NHLPlayerSkaterStats]?
+    
+    enum CodingKeys: String, CodingKey {
+        case goals = "goals"
+        case assists = "assists"
+        case points = "points"
+    }
+    
+    var description: String {
+        return "\(goals?.first?.id ?? 0)"
+    }
+}
+
+struct NHLPlayerGoalieStatsLeaders: Codable, CustomStringConvertible {
+    let wins: [NHLPlayerSkaterStats]?
+    let savePctg: [NHLPlayerSkaterStats]?
+    let goalsAgainstAverage: [NHLPlayerSkaterStats]?
+    
+    enum CodingKeys: String, CodingKey {
+        case wins = "wins"
+        case savePctg = "savePctg"
+        case goalsAgainstAverage = "goalsAgainstAverage"
+    }
+    
+    var description: String {
+        return "\(wins?.first?.id ?? 0)"
+    }
+}
