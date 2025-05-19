@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct ContentView: View {
+    private var fantasyteamList: [NHLFantasyTeam] = []
+    
     var body: some View {
         NavigationView {
                     VStack(spacing: 30) {
@@ -44,6 +46,21 @@ struct ContentView: View {
                                     .imageScale(.large)
                                     .foregroundColor(.blue)
                                 Text("View Standings")
+                                    .font(.title2)
+                                    .foregroundColor(.blue)
+                            }
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(12)
+                            .shadow(radius: 5)
+                        }
+                        
+                        NavigationLink(destination: NHLFantasyListView(fantasyTeams: fantasyteamList)) {
+                            HStack {
+                                Image(systemName: "target")
+                                    .imageScale(.large)
+                                    .foregroundColor(.blue)
+                                Text("Fantasy Team")
                                     .font(.title2)
                                     .foregroundColor(.blue)
                             }
