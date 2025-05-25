@@ -4,239 +4,341 @@
 //
 //  Created by Nik Bar on 5/19/25.
 //
+
 import SwiftUI
 
 struct NHLFantasyDraftView: View {
+    @State private var allAvailableSkaters: [NHLPlayerSkaterStats] = []
+    @State private var allAvailableGoalies: [NHLPlayerSkaterStats] = []
     
+    @State private var timeRemaining = 60
+    @State private var timer: Timer? = nil
+
     @State private var availableSkaters: NHLPlayerSkaterStatsLeaders?
     @State private var availableGoalies: NHLPlayerGoalieStatsLeaders?
     @State private var isSkaterLoading: Bool = true
     @State private var isGoalieLoading: Bool = true
     @State private var selectedSkaterCategory: String = "Goals"
     @State private var selectedGoalieCategory: String = "Wins"
-    
+
     @State private var season: String = "20242025"
     @State private var gameType: Int = 2
     @State private var statsSkaterType: String = "goals"
     @State private var statsGoalieType: String = "wins"
-    
+
     private var fantasyTeam: NHLFantasyTeam
-    
+
     public init(fantasyTeam: NHLFantasyTeam) {
         self.fantasyTeam = fantasyTeam
     }
-    
-    
+
     private let skaterCategories = ["Goals", "Assists", "Points"]
     private let goalieCategories = ["Wins", "Save %", "Goals Against Average"]
-    
+
     var body: some View {
         NavigationView {
-            VStack {
-                Section(header: Text("Players")) {
-                    Picker("Category", selection: $selectedSkaterCategory) {
-                        ForEach(skaterCategories, id: \.self) { category in
-                            Text(category).tag(category)
+            ScrollView {
+                VStack {
+                    Text("Time Remaining: \(timeRemaining)s")
+                        .font(.headline)
+                        .foregroundColor(.red)
+                        .padding()
+                    SkaterSectionView(
+                        selectedCategory: $selectedSkaterCategory,
+                        skaters: $allAvailableSkaters,
+                        isLoading: isSkaterLoading,
+                        fantasyTeam: fantasyTeam,
+                        statsType: selectedSkaterCategory.lowercased(),
+                        removePlayer: { player in
+                            allAvailableSkaters.removeAll { $0.playerId == player.playerId }
+                        },
+                        onPlayerDrafted: {
+                            startTimer()
                         }
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                    .padding()
-                    if isSkaterLoading {
-                        ProgressView("Loading...")
-                    } else {
-                        if (selectedSkaterCategory == "Goals") {
-                            Section(header: Text("Goal Leaders")) {
-                                List {
-                                    ForEach(availableSkaters?.goals ?? [], id: \.id) { player in
-                                        playerRow(player: player, statsType: "goals", fantasyTeam: fantasyTeam)
-                                    }
-                                }
-                            }
-                        } else if (selectedSkaterCategory == "Assists") {
-                            Section(header: Text("Assist Leaders")) {
-                                List {
-                                    ForEach(availableSkaters?.assists ?? [], id: \.id) { player in
-                                        playerRow(player: player, statsType: "assists", fantasyTeam: fantasyTeam)
-                                    }
-                                }
-                            }
-                        } else {
-                            Section(header: Text("Point Leaders")) {
-                                List {
-                                    ForEach(availableSkaters?.points ?? [], id: \.id) { player in
-                                        playerRow(player: player, statsType: "points", fantasyTeam: fantasyTeam)
-                                    }
-                                }
-                            }
+                    )
+
+                    GoalieSectionView(
+                        selectedCategory: $selectedGoalieCategory,
+                        goalies: $allAvailableGoalies,
+                        isLoading: isGoalieLoading,
+                        fantasyTeam: fantasyTeam,
+                        statsType: selectedGoalieCategory.lowercased(),
+                        removePlayer: { player in
+                            allAvailableGoalies.removeAll { $0.playerId == player.playerId }
+                        },
+                        onPlayerDrafted: {
+                            startTimer()
                         }
-                        
-                    }
+                    )
+
                 }
-                
-                Section(header: Text("Goalies")) {
-                    Picker("Category", selection: $selectedGoalieCategory) {
-                        ForEach(goalieCategories, id: \.self) { category in
-                            Text(category).tag(category)
-                        }
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                    .padding()
-                    if isGoalieLoading {
-                        ProgressView("Loading...")
-                    } else {
-                        if (selectedGoalieCategory == "Wins") {
-                            Section(header: Text("Wins Leaders")) {
-                                List {
-                                    ForEach(availableGoalies?.wins ?? [], id: \.id) { player in
-                                        playerRow(player: player, statsType: "wins", fantasyTeam: fantasyTeam)
-                                    }
-                                }
-                            }
-                        } else if (selectedGoalieCategory == "Save %") {
-                            Section(header: Text("Save % Leaders")) {
-                                List {
-                                    ForEach(availableGoalies?.savePctg ?? [], id: \.id) { player in
-                                        playerRow(player: player, statsType: "", fantasyTeam: fantasyTeam)
-                                    }
-                                }
-                            }
-                        } else {
-                            Section(header: Text("Goals Against Average Leaders")) {
-                                List {
-                                    ForEach(availableGoalies?.goalsAgainstAverage ?? [], id: \.id) { player in
-                                        playerRow(player: player, statsType: "GAA", fantasyTeam: fantasyTeam)
-                                    }
-                                }
-                            }
-                        }
-                        
-                    }
-                }
-                
+                .padding()
             }
-        } .onAppear() {
-            decodeAvailableSkaters(season: season, gameType: gameType, statsType: statsSkaterType)
-            decodeAvailableGoalies(season: season, gameType: gameType, statsType: statsGoalieType)
-        } .onChange(of: selectedSkaterCategory) { newValue in
-            switch newValue {
-            case "Goals":
-                statsSkaterType = "goals"
-            case "Assists":
-                statsSkaterType = "assists"
-            case "Points":
-                statsSkaterType = "points"
-            default:
-                statsSkaterType = "goals"
-            }
+            .navigationTitle("Fantasy Draft")
+        }
+        .onAppear {
+            loadInitialData()
+            startTimer()
+        }
+        .onChange(of: selectedSkaterCategory) { newValue in
+            statsSkaterType = skaterStatKey(for: newValue)
             isSkaterLoading = true
             decodeAvailableSkaters(season: season, gameType: gameType, statsType: statsSkaterType)
-        } .onChange(of: selectedGoalieCategory) { newValue in
-            switch newValue {
-            case "Wins":
-                statsSkaterType = "wins"
-            case "Save %":
-                statsSkaterType = "savePctg"
-            case "Goals Against Average":
-                statsSkaterType = "goalsAgainstAverage"
-            default:
-                statsSkaterType = "wins"
-            }
+        }
+        .onChange(of: selectedGoalieCategory) { newValue in
+            statsGoalieType = goalieStatKey(for: newValue)
             isGoalieLoading = true
-            decodeAvailableGoalies(season: season, gameType: gameType, statsType: statsSkaterType)
+            decodeAvailableGoalies(season: season, gameType: gameType, statsType: statsGoalieType)
         }
     }
-        
-        func decodeAvailableSkaters(season: String, gameType: Int, statsType: String) {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            guard let url = NHLResource.skaterStatsLeadersURL(season: season, gameType: gameType, statsType: statsType) else {
-                print("Cannot create available players stats URL for \(season)")
+
+    private func decodeAvailableSkaters(season: String, gameType: Int, statsType: String) {
+        guard let url = NHLResource.skaterStatsLeadersURL(season: season, gameType: gameType, statsType: statsType) else {
+            print("Cannot create available skaters stats URL for \(season)")
+            return
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let error = error {
+                print(error)
                 return
             }
-            print("Loading players stats leaders for \(season) with URL \(url.absoluteString)")
-            
-            let dataTask = URLSession.shared.dataTask(with: url) { dataW, response, error in
-                if let error = error {
-                    print(error)
-                    return
-                }
-                
-                guard let dataL = dataW else {
-                    print("No data received")
-                    return
-                }
-                
-                do {
-                    let result = try decoder.decode(NHLPlayerSkaterStatsLeaders.self, from: dataL)
-                    DispatchQueue.main.async {
-                        availableSkaters = result
-                        isSkaterLoading = false
-                    }
-                } catch {
-                    print(error)
-                }
-            }
-            dataTask.resume()
-        }
-        
-        func decodeAvailableGoalies(season: String, gameType: Int, statsType: String) {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            guard let url = NHLResource.goalieStatsLeadersURL(season: season, gameType: gameType, statsType: statsType) else {
-                print("Cannot create available goalies stats URL for \(season)")
+
+            guard let data = data else {
+                print("No data received")
                 return
             }
-            print("Loading goalie stats leaders for \(season) with URL \(url.absoluteString)")
-            
-            let dataTask = URLSession.shared.dataTask(with: url) { dataW, response, error in
-                if let error = error {
-                    print(error)
-                    return
+
+            do {
+                let result = try decoder.decode(NHLPlayerSkaterStatsLeaders.self, from: data)
+                DispatchQueue.main.async {
+                    availableSkaters = result
+                    allAvailableSkaters = getSkatersList(from: result, for: statsSkaterType)
+                        .filter { !fantasyTeam.hasDrafted($0.playerId) }
+                    isSkaterLoading = false
                 }
-                
-                guard let dataL = dataW else {
-                    print("No data received")
-                    return
-                }
-                
-                do {
-                    let result = try decoder.decode(NHLPlayerGoalieStatsLeaders.self, from: dataL)
-                    DispatchQueue.main.async {
-                        availableGoalies = result
-                        isGoalieLoading = false
-                    }
-                } catch {
-                    print(error)
-                }
+            } catch {
+                print(error)
             }
-            dataTask.resume()
-        }
-        
-        struct playerRow: View {
-            let player: NHLPlayerSkaterStats
-            let statsType: String
-            let fantasyTeam: NHLFantasyTeam
-            
-            
-            var trimmedString: String {
-                String(format: "%g", player.value)
-            }
-            
-            var body: some View {
-                Button(action: {
-                    fantasyTeam.addPlayer(player)
-                    print("Player row tapped: \(player.firstName.def) \(player.lastName.def)")
-                }) {
-                    HStack {
-                        Text("\(player.firstName.def) \(player.lastName.def)")
-                        Spacer()
-                        Text("\(trimmedString) \(statsType)")
-                    }
-                    .padding(.vertical, 8)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-        }
-        
+        }.resume()
     }
+
+    private func decodeAvailableGoalies(season: String, gameType: Int, statsType: String) {
+        guard let url = NHLResource.goalieStatsLeadersURL(season: season, gameType: gameType, statsType: statsType) else {
+            print("Cannot create available goalie stats URL for \(season)")
+            return
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let error = error {
+                print(error)
+                return
+            }
+
+            guard let data = data else {
+                print("No data received")
+                return
+            }
+
+            do {
+                let result = try decoder.decode(NHLPlayerGoalieStatsLeaders.self, from: data)
+                DispatchQueue.main.async {
+                    availableGoalies = result
+                    allAvailableGoalies = getGoalieList(from: result, for: statsGoalieType)
+                        .filter { !fantasyTeam.hasDrafted($0.playerId) }
+                    isGoalieLoading = false
+                }
+            } catch {
+                print(error)
+            }
+        }.resume()
+    }
+
+    private func getSkatersList(from stats: NHLPlayerSkaterStatsLeaders, for type: String) -> [NHLPlayerSkaterStats] {
+        switch type {
+        case "goals": return stats.goals ?? []
+        case "assists": return stats.assists ?? []
+        case "points": return stats.points ?? []
+        default: return []
+        }
+    }
+
+    private func getGoalieList(from stats: NHLPlayerGoalieStatsLeaders, for type: String) -> [NHLPlayerSkaterStats] {
+        switch type {
+        case "wins": return stats.wins ?? []
+        case "savePctg": return stats.savePctg ?? []
+        case "goalsAgainstAverage": return stats.goalsAgainstAverage ?? []
+        default: return []
+        }
+    }
+
+    private func loadInitialData() {
+        decodeAvailableSkaters(season: season, gameType: gameType, statsType: statsSkaterType)
+        decodeAvailableGoalies(season: season, gameType: gameType, statsType: statsGoalieType)
+    }
+
+    private func skaterStatKey(for label: String) -> String {
+        switch label {
+        case "Goals": return "goals"
+        case "Assists": return "assists"
+        case "Points": return "points"
+        default: return "goals"
+        }
+    }
+
+    private func goalieStatKey(for label: String) -> String {
+        switch label {
+        case "Wins": return "wins"
+        case "Save %": return "savePctg"
+        case "Goals Against Average": return "goalsAgainstAverage"
+        default: return "wins"
+        }
+    }
+    
+    private func startTimer() {
+        timer?.invalidate()
+        timeRemaining = 60
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            if timeRemaining > 0 {
+                timeRemaining -= 1
+            } else {
+                timer?.invalidate()
+                autoDraftPlayer()
+                startTimer()
+            }
+        }
+    }
+    
+    private func autoDraftPlayer() {
+        let shouldPickSkater = Bool.random(probability: 0.8)
+        if shouldPickSkater, let skater = allAvailableSkaters.first {
+            fantasyTeam.addPlayer(skater)
+            allAvailableSkaters.removeAll { $0.playerId == skater.playerId }
+        } else if let goalie = allAvailableGoalies.first {
+            fantasyTeam.addPlayer(goalie)
+            allAvailableGoalies.removeAll { $0.playerId == goalie.playerId }
+        }
+    }
+
+}
+
+// MARK: - Supporting Views
+
+struct PlayerRow: View {
+    let player: NHLPlayerSkaterStats
+    let statsType: String
+    let fantasyTeam: NHLFantasyTeam
+    let onPlayerSelected: () -> Void
+    let onAfterSelection: () -> Void   // NEW
+
+    var trimmedString: String {
+        String(format: "%g", player.value)
+    }
+
+    var body: some View {
+        Button(action: {
+            fantasyTeam.addPlayer(player)
+            onPlayerSelected()
+            onAfterSelection()   // RESET TIMER HERE
+        }) {
+            HStack {
+                Text("\(player.firstName.def) \(player.lastName.def)")
+                Spacer()
+                Text("\(trimmedString) \(statsType)")
+            }
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+
+struct SkaterSectionView: View {
+    @Binding var selectedCategory: String
+    @Binding var skaters: [NHLPlayerSkaterStats]
+    let isLoading: Bool
+    let fantasyTeam: NHLFantasyTeam
+    let statsType: String
+    let removePlayer: (NHLPlayerSkaterStats) -> Void
+    let onPlayerDrafted: () -> Void
+
+    var body: some View {
+        Section(header: Text("Skaters")) {
+            Picker("Category", selection: $selectedCategory) {
+                ForEach(["Goals", "Assists", "Points"], id: \.self) { Text($0).tag($0) }
+            }
+            .pickerStyle(SegmentedPickerStyle())
+
+            if isLoading {
+                ProgressView("Loading...")
+            } else {
+                List(skaters, id: \.playerId) { player in
+                    PlayerRow(
+                                            player: player,
+                                            statsType: statsType,
+                                            fantasyTeam: fantasyTeam,
+                                            onPlayerSelected: {
+                                                removePlayer(player)
+                                            },
+                                            onAfterSelection: {
+                                                onPlayerDrafted()
+                                            }
+                                        )
+                }
+                .frame(height: 300)
+            }
+        }
+    }
+}
+
+struct GoalieSectionView: View {
+    @Binding var selectedCategory: String
+    @Binding var goalies: [NHLPlayerSkaterStats]
+    let isLoading: Bool
+    let fantasyTeam: NHLFantasyTeam
+    let statsType: String
+    let removePlayer: (NHLPlayerSkaterStats) -> Void
+    let onPlayerDrafted: () -> Void
+
+    var body: some View {
+        Section(header: Text("Goalies")) {
+            Picker("Category", selection: $selectedCategory) {
+                ForEach(["Wins", "Save %", "Goals Against Average"], id: \.self) { Text($0).tag($0) }
+            }
+            .pickerStyle(SegmentedPickerStyle())
+
+            if isLoading {
+                ProgressView("Loading...")
+            } else {
+                List(goalies, id: \.playerId) { player in
+                    PlayerRow(
+                                            player: player,
+                                            statsType: statsType,
+                                            fantasyTeam: fantasyTeam,
+                                            onPlayerSelected: {
+                                                removePlayer(player)
+                                            },
+                                            onAfterSelection: {
+                                                onPlayerDrafted()
+                                            }
+                                        )
+                }
+                .frame(height: 300)
+            }
+        }
+    }
+}
+
+extension Bool {
+    static func random(probability: Double) -> Bool {
+        return Double.random(in: 0..<1) < probability
+    }
+}
+

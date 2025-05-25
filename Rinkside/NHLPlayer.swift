@@ -235,7 +235,7 @@ struct NHLPersonShort: Codable, CustomStringConvertible {
 }
 
 struct NHLPlayerSkaterStats: Codable, CustomStringConvertible {
-    let id: Int
+    let playerId: Int
     let firstName: NHLType
     let lastName: NHLType
     let sweaterNumber: Int?
@@ -247,7 +247,7 @@ struct NHLPlayerSkaterStats: Codable, CustomStringConvertible {
     let value: Double
     
     enum CodingKeys: String, CodingKey {
-        case id = "id"
+        case playerId = "id"
         case firstName = "firstName"
         case lastName = "lastName"
         case sweaterNumber = "sweaterNumber"
@@ -260,7 +260,7 @@ struct NHLPlayerSkaterStats: Codable, CustomStringConvertible {
     }
     
     var description: String {
-        return "\(id)"
+        return "\(playerId)"
     }
 }
 
@@ -276,7 +276,7 @@ struct NHLPlayerSkaterStatsLeaders: Codable, CustomStringConvertible {
     }
     
     var description: String {
-        return "\(goals?.first?.id ?? 0)"
+        return "\(goals?.first?.playerId ?? 0)"
     }
 }
 
@@ -292,6 +292,6 @@ struct NHLPlayerGoalieStatsLeaders: Codable, CustomStringConvertible {
     }
     
     var description: String {
-        return "\(wins?.first?.id ?? 0)"
+        return "\(wins?.first?.playerId ?? 0)"
     }
 }

@@ -15,6 +15,7 @@ class NHLFantasyTeam: Identifiable, Codable, Equatable, ObservableObject {
     @Published private var name: String
     @Published private var players: [NHLPlayer]  = []
     @Published private var completedDraft: Bool = false
+    @Published private(set) var draftedPlayerIds: Set<Int> = []
     
     init(name: String) {
         id = UUID().uuidString
@@ -42,28 +43,43 @@ class NHLFantasyTeam: Identifiable, Codable, Equatable, ObservableObject {
     }
     
     public func addPlayer(_ player: NHLPlayerSkaterStats) {
-        let player = convertNHLPlayer(playerId: player.id)!
+        let player = convertNHLPlayer(playerId: player.playerId)!
         players.append(player)
     }
     
     public func convertNHLPlayer(playerId: Int) -> NHLPlayer? {
-        var player: NHLPlayer = NHLResource.defaultNHLPlayer()
+        draftedPlayerIds.insert(playerId)
+        
+        var player: NHLPlayer?
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd" 
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        decoder.dateDecodingStrategy = .formatted(dateFormatter)
+        
         guard let url = NHLResource.basePlayerLandingURL(for: playerId) else { return nil }
         
+        let semaphore = DispatchSemaphore(value: 0)
+        
         URLSession.shared.dataTask(with: url) { data, _, error in
+            defer { semaphore.signal() }
             guard let data = data else { return }
-            DispatchQueue.main.async {
-                do {
-                    player = try decoder.decode(NHLPlayer.self, from: data)
-                } catch {
-                    print(error)
-                }
+            do {
+                player = try decoder.decode(NHLPlayer.self, from: data)
+            } catch {
+                print(error)
             }
         }.resume()
+        
+        semaphore.wait()
         return player
     }
+    
+    func hasDrafted(_ playerId: Int) -> Bool {
+            draftedPlayerIds.contains(playerId)
+        }
     
     enum CodingKeys: String, CodingKey {
             case id
