@@ -11,6 +11,9 @@ struct NHLFantasyDraftView: View {
     @State private var allAvailableSkaters: [NHLPlayerSkaterStats] = []
     @State private var allAvailableGoalies: [NHLPlayerSkaterStats] = []
     
+    @State private var showBackConfirmation = false
+    @Environment(\.presentationMode) var presentationMode
+    
     @State private var timeRemaining = 60
     @State private var timer: Timer? = nil
 
@@ -25,8 +28,35 @@ struct NHLFantasyDraftView: View {
     @State private var gameType: Int = 2
     @State private var statsSkaterType: String = "goals"
     @State private var statsGoalieType: String = "wins"
+    
+    @State private var lastSelectedPlayer: NHLPlayerSkaterStats? = nil
 
     private var fantasyTeam: NHLFantasyTeam
+    
+    private var forwardsCount: Int {
+        fantasyTeam.draftedPlayers.filter {
+            $0.position == "F" || $0.position == "C" || $0.position == "LW" || $0.position == "RW"
+        }.count
+    }
+
+    private var defensemenCount: Int {
+        fantasyTeam.draftedPlayers.filter { $0.position == "D" }.count
+    }
+
+    private var skatersCount: Int {
+        fantasyTeam.draftedPlayers.filter { $0.position != "G" }.count
+    }
+
+    private var goaliesCount: Int {
+        fantasyTeam.draftedPlayers.filter { $0.position == "G" }.count
+    }
+
+    private var draftComplete: Bool {
+        skatersCount >= 23 &&
+        forwardsCount >= 12 &&
+        defensemenCount >= 6 &&
+        goaliesCount >= 3
+    }
 
     public init(fantasyTeam: NHLFantasyTeam) {
         self.fantasyTeam = fantasyTeam
@@ -43,6 +73,57 @@ struct NHLFantasyDraftView: View {
                         .font(.headline)
                         .foregroundColor(.red)
                         .padding()
+                    
+                    VStack(spacing: 10) {
+                        Text("Skaters: \(skatersCount) | Forwards: \(forwardsCount) | Defense: \(defensemenCount) | Goalies: \(goaliesCount)")
+                            .font(.subheadline)
+                            .padding(.bottom, 5)
+                            .foregroundColor(.blue)
+                        
+                        if draftComplete {
+                            Text("Draft complete!")
+                                .font(.headline)
+                                .foregroundColor(.green)
+                                .onAppear {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                        presentationMode.wrappedValue.dismiss()
+                                    }
+                                }
+                        }
+                    }
+
+                    
+                    if let last = lastSelectedPlayer {
+                        HStack {
+                            if let url = URL(string: last.headshot) {
+                                AsyncImage(url: url) { image in
+                                    image.resizable()
+                                        .scaledToFill()
+                                        .frame(width: 50, height: 50)
+                                        .clipShape(Circle())
+                                } placeholder: {
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.3))
+                                        .frame(width: 50, height: 50)
+                                }
+                            }
+
+                            VStack(alignment: .leading) {
+                                Text("Last Drafted:")
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                                Text("\(last.firstName.def) \(last.lastName.def)")
+                                    .font(.headline)
+                            }
+                            
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                        .padding(.horizontal)
+                    }
+
                     SkaterSectionView(
                         selectedCategory: $selectedSkaterCategory,
                         skaters: $allAvailableSkaters,
@@ -54,7 +135,10 @@ struct NHLFantasyDraftView: View {
                         },
                         onPlayerDrafted: {
                             startTimer()
-                        }
+                        },
+                        setLastSelected: { player in
+                            lastSelectedPlayer = player
+                        }, onDraftCompleted: checkDraftCompletion
                     )
 
                     GoalieSectionView(
@@ -68,13 +152,18 @@ struct NHLFantasyDraftView: View {
                         },
                         onPlayerDrafted: {
                             startTimer()
-                        }
+                        },
+                        setLastSelected: { player in
+                            lastSelectedPlayer = player
+                        }, onDraftCompleted: checkDraftCompletion
                     )
+
 
                 }
                 .padding()
             }
             .navigationTitle("Fantasy Draft")
+            .navigationBarBackButtonHidden(true)
         }
         .onAppear {
             loadInitialData()
@@ -89,6 +178,28 @@ struct NHLFantasyDraftView: View {
             statsGoalieType = goalieStatKey(for: newValue)
             isGoalieLoading = true
             decodeAvailableGoalies(season: season, gameType: gameType, statsType: statsGoalieType)
+        }.toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    showBackConfirmation = true
+                    fantasyTeam.clearPlayers()
+                }) {
+                    HStack {
+                        Image(systemName: "chevron.left")
+                        Text("Back")
+                    }
+                }
+            }
+        }
+        .alert(isPresented: $showBackConfirmation) {
+            Alert(
+                title: Text("Are you sure you want to go back?"),
+                message: Text("Going back will reset your draft progress."),
+                primaryButton: .destructive(Text("Leave")) {
+                    presentationMode.wrappedValue.dismiss()
+                },
+                secondaryButton: .cancel()
+            )
         }
     }
 
@@ -225,6 +336,15 @@ struct NHLFantasyDraftView: View {
             allAvailableGoalies.removeAll { $0.playerId == goalie.playerId }
         }
     }
+    
+    private func checkDraftCompletion() {
+        if draftComplete {
+            timer?.invalidate()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                presentationMode.wrappedValue.dismiss()
+            }
+        }
+    }
 
 }
 
@@ -235,7 +355,9 @@ struct PlayerRow: View {
     let statsType: String
     let fantasyTeam: NHLFantasyTeam
     let onPlayerSelected: () -> Void
-    let onAfterSelection: () -> Void   // NEW
+    let onAfterSelection: () -> Void
+    let onDraftCompleted: () -> Void
+    let setLastSelected: (NHLPlayerSkaterStats) -> Void
 
     var trimmedString: String {
         String(format: "%g", player.value)
@@ -245,7 +367,9 @@ struct PlayerRow: View {
         Button(action: {
             fantasyTeam.addPlayer(player)
             onPlayerSelected()
-            onAfterSelection()   // RESET TIMER HERE
+            setLastSelected(player)
+            onAfterSelection()
+            onDraftCompleted()
         }) {
             HStack {
                 Text("\(player.firstName.def) \(player.lastName.def)")
@@ -260,6 +384,7 @@ struct PlayerRow: View {
 }
 
 
+
 struct SkaterSectionView: View {
     @Binding var selectedCategory: String
     @Binding var skaters: [NHLPlayerSkaterStats]
@@ -268,6 +393,8 @@ struct SkaterSectionView: View {
     let statsType: String
     let removePlayer: (NHLPlayerSkaterStats) -> Void
     let onPlayerDrafted: () -> Void
+    let setLastSelected: (NHLPlayerSkaterStats) -> Void
+    let onDraftCompleted: () -> Void
 
     var body: some View {
         Section(header: Text("Skaters")) {
@@ -281,16 +408,22 @@ struct SkaterSectionView: View {
             } else {
                 List(skaters, id: \.playerId) { player in
                     PlayerRow(
-                                            player: player,
-                                            statsType: statsType,
-                                            fantasyTeam: fantasyTeam,
-                                            onPlayerSelected: {
-                                                removePlayer(player)
-                                            },
-                                            onAfterSelection: {
-                                                onPlayerDrafted()
-                                            }
-                                        )
+                        player: player,
+                        statsType: statsType,
+                        fantasyTeam: fantasyTeam,
+                        onPlayerSelected: {
+                            removePlayer(player)
+                        },
+                        onAfterSelection: {
+                            onPlayerDrafted()
+                        },
+                        onDraftCompleted: {
+                            onDraftCompleted()
+                        },
+                        setLastSelected: { player in
+                            setLastSelected(player)
+                        }
+                    )
                 }
                 .frame(height: 300)
             }
@@ -306,6 +439,8 @@ struct GoalieSectionView: View {
     let statsType: String
     let removePlayer: (NHLPlayerSkaterStats) -> Void
     let onPlayerDrafted: () -> Void
+    let setLastSelected: (NHLPlayerSkaterStats) -> Void
+    let onDraftCompleted: () -> Void
 
     var body: some View {
         Section(header: Text("Goalies")) {
@@ -319,16 +454,21 @@ struct GoalieSectionView: View {
             } else {
                 List(goalies, id: \.playerId) { player in
                     PlayerRow(
-                                            player: player,
-                                            statsType: statsType,
-                                            fantasyTeam: fantasyTeam,
-                                            onPlayerSelected: {
-                                                removePlayer(player)
-                                            },
-                                            onAfterSelection: {
-                                                onPlayerDrafted()
-                                            }
-                                        )
+                        player: player,
+                        statsType: statsType,
+                        fantasyTeam: fantasyTeam,
+                        onPlayerSelected: {
+                            removePlayer(player)
+                        },
+                        onAfterSelection: {
+                            onPlayerDrafted()
+                        },
+                        onDraftCompleted: {
+                            onDraftCompleted()},
+                        setLastSelected: {_ in
+                            setLastSelected(player)
+                        }
+                    )
                 }
                 .frame(height: 300)
             }

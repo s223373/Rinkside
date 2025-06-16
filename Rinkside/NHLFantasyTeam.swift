@@ -17,6 +17,10 @@ class NHLFantasyTeam: Identifiable, Codable, Equatable, ObservableObject {
     @Published private var completedDraft: Bool = false
     @Published private(set) var draftedPlayerIds: Set<Int> = []
     
+    public var draftedPlayers: [NHLPlayer] {
+        return players
+    }
+    
     init(name: String) {
         id = UUID().uuidString
         self.name = name
@@ -105,4 +109,8 @@ class NHLFantasyTeam: Identifiable, Codable, Equatable, ObservableObject {
             try container.encode(players, forKey: .players)
             try container.encode(completedDraft, forKey: .completedDraft)
         }
+    
+    func clearPlayers() {
+        players.removeAll()
+    }
 }

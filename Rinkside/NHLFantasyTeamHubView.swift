@@ -33,11 +33,19 @@ struct NHLFantasyTeamHubView: View {
                 
             }
             
-            Section(header: Text("Current Roster: ").font(.headline)) {
-                ForEach(fantasyTeam.getPlayers(), id: \.playerId) { player in
-                    PlayerFantasyRow(player: player, description: playerShortDescriptionFantasy(from: player))
-                }
-            }
+            Text("Current Roster:")
+                            .font(.headline)
+                            .padding(.top)
+            
+            ScrollView {
+                            VStack(alignment: .leading, spacing: 10) {
+                                ForEach(fantasyTeam.getPlayers(), id: \.playerId) { player in
+                                    PlayerFantasyRow(player: player, description: playerShortDescriptionFantasy(from: player))
+                                        .padding(.horizontal)
+                                }
+                            }
+                            .padding(.bottom)
+                        }
             
         }
     }
