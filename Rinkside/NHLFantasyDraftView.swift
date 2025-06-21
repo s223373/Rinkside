@@ -35,9 +35,10 @@ struct NHLFantasyDraftView: View {
     
     private var forwardsCount: Int {
         fantasyTeam.draftedPlayers.filter {
-            $0.position == "F" || $0.position == "C" || $0.position == "LW" || $0.position == "RW"
+            $0.position == "F" || $0.position == "C" || $0.position == "L" || $0.position == "R"
         }.count
     }
+    
 
     private var defensemenCount: Int {
         fantasyTeam.draftedPlayers.filter { $0.position == "D" }.count
@@ -56,6 +57,18 @@ struct NHLFantasyDraftView: View {
         forwardsCount >= 12 &&
         defensemenCount >= 6 &&
         goaliesCount >= 3
+    }
+    
+    private var availableForwards: [NHLPlayerSkaterStats] {
+        allAvailableSkaters.filter {
+            ["F", "C", "L", "R"].contains($0.position)
+        }
+    }
+
+    private var availableDefensemen: [NHLPlayerSkaterStats] {
+        allAvailableSkaters.filter {
+            $0.position == "D"
+        }
     }
 
     public init(fantasyTeam: NHLFantasyTeam) {
@@ -85,6 +98,7 @@ struct NHLFantasyDraftView: View {
                                 .font(.headline)
                                 .foregroundColor(.green)
                                 .onAppear {
+                                    fantasyTeam.setCompletedDraft(true)
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                                         presentationMode.wrappedValue.dismiss()
                                     }
@@ -125,8 +139,9 @@ struct NHLFantasyDraftView: View {
                     }
 
                     SkaterSectionView(
+                        title: "Forwards",
                         selectedCategory: $selectedSkaterCategory,
-                        skaters: $allAvailableSkaters,
+                        skaters: .constant(availableForwards),
                         isLoading: isSkaterLoading,
                         fantasyTeam: fantasyTeam,
                         statsType: selectedSkaterCategory.lowercased(),
@@ -140,6 +155,25 @@ struct NHLFantasyDraftView: View {
                             lastSelectedPlayer = player
                         }, onDraftCompleted: checkDraftCompletion
                     )
+
+                    SkaterSectionView(
+                        title: "Defensemen",
+                        selectedCategory: $selectedSkaterCategory,
+                        skaters: .constant(availableDefensemen),
+                        isLoading: isSkaterLoading,
+                        fantasyTeam: fantasyTeam,
+                        statsType: selectedSkaterCategory.lowercased(),
+                        removePlayer: { player in
+                            allAvailableSkaters.removeAll { $0.playerId == player.playerId }
+                        },
+                        onPlayerDrafted: {
+                            startTimer()
+                        },
+                        setLastSelected: { player in
+                            lastSelectedPlayer = player
+                        }, onDraftCompleted: checkDraftCompletion
+                    )
+
 
                     GoalieSectionView(
                         selectedCategory: $selectedGoalieCategory,
@@ -386,6 +420,7 @@ struct PlayerRow: View {
 
 
 struct SkaterSectionView: View {
+    let title: String
     @Binding var selectedCategory: String
     @Binding var skaters: [NHLPlayerSkaterStats]
     let isLoading: Bool
@@ -397,7 +432,7 @@ struct SkaterSectionView: View {
     let onDraftCompleted: () -> Void
 
     var body: some View {
-        Section(header: Text("Skaters")) {
+        Section(header: Text("\(title)")) {
             Picker("Category", selection: $selectedCategory) {
                 ForEach(["Goals", "Assists", "Points"], id: \.self) { Text($0).tag($0) }
             }
