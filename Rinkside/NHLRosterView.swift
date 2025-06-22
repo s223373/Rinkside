@@ -11,11 +11,16 @@ struct NHLRosterView: View {
     @State private var prospects: NHLRoster?
     @State private var isPlayerActive: Bool = false
     @State private var isLoading: Bool = true
+    @State private var seasonId: String = "20242025"
     private let teamId: String
     
     public init (teamIdentifier: String) {
         teamId = teamIdentifier
     }
+    
+    private let availableSeasons = [
+        "20242025", "20232024", "20222023", "20212022", "20202021"
+    ]
     
     var body: some View {
         NavigationView {
@@ -64,6 +69,22 @@ struct NHLRosterView: View {
                 }
             }
             .navigationTitle("Team Roster")
+            .toolbar {
+                Menu {
+                    ForEach(availableSeasons, id: \.self) { season in
+                        Button(action: {
+                            seasonId = season
+                            isLoading = true
+                            decodeRoster(teamId: teamId)
+                            decodeProspects(teamId: teamId)
+                        }) {
+                            Text("\(formattedSeason(season))")
+                        }
+                    }
+                } label: {
+                    Label("Select Season", systemImage: "calendar")
+                }
+            }
             .onAppear {
                 decodeRoster(teamId: teamId)
                 decodeProspects(teamId: teamId)
@@ -117,7 +138,7 @@ struct NHLRosterView: View {
     func decodeRoster(teamId: String) {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let url = NHLResource.currentRosterURL(for: teamId) else {
+        guard let url = NHLResource.currentRosterURL(for: teamId, with: seasonId) else {
             print("Cannot create roster URL for \(teamId)")
             return
         }
@@ -178,6 +199,12 @@ struct NHLRosterView: View {
             }
         }
         dataTask.resume()
+    }
+    
+    func formattedSeason(_ seasonId: String) -> String {
+        let start = seasonId.prefix(4)
+        let end = seasonId.suffix(4)
+        return "\(start)-\(end)"
     }
     
     

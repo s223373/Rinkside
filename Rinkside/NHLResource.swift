@@ -19,8 +19,8 @@ struct NHLResource {
         return URL(string: "\(baseStatsRestURL)/en/team")
     }
     
-    public static func currentRosterURL(for teamId: String) -> URL? {
-        return URL(string: "\(baseRosterURL)/roster/\(teamId)/current")
+    public static func currentRosterURL(for teamId: String, with seasonId: String) -> URL? {
+        return URL(string: "\(baseRosterURL)/roster/\(teamId)/\(seasonId)")
     }
     
     public static func currentProspectsURL(for teamId: String) -> URL? {

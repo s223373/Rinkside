@@ -13,6 +13,10 @@ struct NHLFantasyTeamHubView: View {
     @State private var activeForwards: [NHLPlayer] = []
     @State private var activeDefensemen: [NHLPlayer] = []
     @State private var activeGoalies: [NHLPlayer] = []
+    
+    @State private var hoveredForwardID: Int? = nil
+    @State private var hoveredDefenseID: Int? = nil
+    @State private var hoveredGoalieID: Int? = nil
 
    
 
@@ -85,17 +89,16 @@ struct NHLFantasyTeamHubView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    // FORWARDS
                     VStack(alignment: .leading) {
-                        Text("Forwards")
-                            .font(.title3)
-                            .bold()
+                        Text("Forwards").font(.title3).bold()
                         ForEach(activeForwards, id: \.playerId) { player in
                             PlayerFantasyRow(player: player, description: playerShortDescriptionFantasy(from: player))
+                                .background(hoveredForwardID == player.playerId ? Color.gray.opacity(0.3) : Color.clear)
+                                .onDrop(of: [.utf8PlainText], isTargeted: nil) { providers in
+                                    hoveredForwardID = player.playerId
+                                    return handleDrop(providers: providers, replacing: player, in: .forward)
+                                }
                         }
-                    }
-                    .onDrop(of: [.utf8PlainText], isTargeted: nil) { providers in
-                        handleDrop(providers: providers, for: .forward)
                     }
 
                     // DEFENSEMEN
@@ -105,11 +108,14 @@ struct NHLFantasyTeamHubView: View {
                             .bold()
                         ForEach(activeDefensemen, id: \.playerId) { player in
                             PlayerFantasyRow(player: player, description: playerShortDescriptionFantasy(from: player))
+                                .background(hoveredDefenseID == player.playerId ? Color.gray.opacity(0.3) : Color.clear)
+                                .onDrop(of: [.utf8PlainText], isTargeted: nil) { providers in
+                                    hoveredDefenseID = player.playerId
+                                    return handleDrop(providers: providers, replacing: player, in: .defense)
+                                }
                         }
                     }
-                    .onDrop(of: [.utf8PlainText], isTargeted: nil) { providers in
-                        handleDrop(providers: providers, for: .defense)
-                    }
+                    
 
                     // GOALIES
                     VStack(alignment: .leading) {
@@ -118,11 +124,14 @@ struct NHLFantasyTeamHubView: View {
                             .bold()
                         ForEach(activeGoalies, id: \.playerId) { player in
                             PlayerFantasyRow(player: player, description: playerShortDescriptionFantasy(from: player))
+                                .background(hoveredGoalieID == player.playerId ? Color.gray.opacity(0.3) : Color.clear)
+                                .onDrop(of: [.utf8PlainText], isTargeted: nil) { providers in
+                                    hoveredGoalieID = player.playerId
+                                    return handleDrop(providers: providers, replacing: player, in: .goalie)
+                                }
                         }
                     }
-                    .onDrop(of: [.utf8PlainText], isTargeted: nil) { providers in
-                        handleDrop(providers: providers, for: .goalie)
-                    }
+                    
 
                     // BENCH
                     VStack(alignment: .leading) {
@@ -157,38 +166,31 @@ struct NHLFantasyTeamHubView: View {
 
     // MARK: - Drop Handler
 
-    private func handleDrop(providers: [NSItemProvider], for group: FantasyPositionGroup) -> Bool {
+    private func handleDrop(providers: [NSItemProvider], replacing target: NHLPlayer, in group: FantasyPositionGroup) -> Bool {
         for provider in providers {
             provider.loadObject(ofClass: String.self) { string, _ in
                 guard let playerId = string.flatMap({ Int($0) }),
-                      let player = fantasyTeam.getPlayers().first(where: { $0.playerId == playerId }) else { return }
+                      let newPlayer = fantasyTeam.getPlayers().first(where: { $0.playerId == playerId }) else { return }
 
                 DispatchQueue.main.async {
                     switch group {
                     case .forward:
-                        guard ["C", "L", "R"].contains(player.position) else { return }
-                        if !activeForwards.contains(where: { $0.playerId == player.playerId }) {
-                            if activeForwards.count >= 12 {
-                                activeForwards.removeFirst()
-                            }
-                            activeForwards.append(player)
-                        }
+                        guard ["C", "L", "R"].contains(newPlayer.position),
+                              let index = activeForwards.firstIndex(where: { $0.playerId == target.playerId }) else { return }
+
+                        activeForwards[index] = newPlayer
+
                     case .defense:
-                        guard player.position == "D" else { return }
-                        if !activeDefensemen.contains(where: { $0.playerId == player.playerId }) {
-                            if activeDefensemen.count >= 6 {
-                                activeDefensemen.removeFirst()
-                            }
-                            activeDefensemen.append(player)
-                        }
+                        guard newPlayer.position == "D",
+                              let index = activeDefensemen.firstIndex(where: { $0.playerId == target.playerId }) else { return }
+
+                        activeDefensemen[index] = newPlayer
+
                     case .goalie:
-                        guard player.position == "G" else { return }
-                        if !activeGoalies.contains(where: { $0.playerId == player.playerId }) {
-                            if activeGoalies.count >= 2 {
-                                activeGoalies.removeFirst()
-                            }
-                            activeGoalies.append(player)
-                        }
+                        guard newPlayer.position == "G",
+                              let index = activeGoalies.firstIndex(where: { $0.playerId == target.playerId }) else { return }
+
+                        activeGoalies[index] = newPlayer
                     }
                 }
             }

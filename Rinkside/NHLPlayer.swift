@@ -9,15 +9,15 @@ import SwiftUI
 struct NHLPlayer: Codable, CustomStringConvertible {
     let playerId: Int
     let isActive: Bool
-    let currentTeamId: Int
-    let currentTeamAbbrev: String
-    let fullTeamName: NHLType
-    let teamCommonName: NHLType
+    let currentTeamId: Int?
+    let currentTeamAbbrev: String?
+    let fullTeamName: NHLType?
+    let teamCommonName: NHLType?
     let teamPlaceNameWithPreposition: NHLType?
     let firstName: NHLType
     let lastName: NHLType
-    let teamLogo: String
-    let sweaterNumber: Int
+    let teamLogo: String?
+    let sweaterNumber: Int?
     let position: String
     let headshot: String
     let heroImage: String

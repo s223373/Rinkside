@@ -164,11 +164,11 @@ struct PlayerHeaderView: View {
                 Text("\(player.firstName.def) \(player.lastName.def)")
                     .font(.largeTitle)
                     .fontWeight(.bold)
-                Text(player.fullTeamName.def)
+                Text(player.fullTeamName?.def ?? "N/A")
                     .font(.title3)
                     .foregroundColor(.secondary)
                 HStack(spacing: 15) {
-                    Text("#\(player.sweaterNumber)")
+                    Text("#\(player.sweaterNumber ?? -1)")
                         .font(.title2).bold().foregroundColor(.blue)
                     Text(player.position)
                         .font(.title2).bold().foregroundColor(.orange)
