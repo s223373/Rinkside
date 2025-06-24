@@ -212,7 +212,7 @@ struct NHLSeasonTotal: Codable, CustomStringConvertible {
     }
     
     var description: String {
-        return "\(teamName) - \(season)"
+        return "\(teamName) - \(season) - \(sequence) - \(points) - \(goals) - \(assists)"
     }
 }
 

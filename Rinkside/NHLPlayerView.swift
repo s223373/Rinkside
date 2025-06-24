@@ -247,21 +247,38 @@ struct PlayerStatsView: View {
                 .fontWeight(.semibold)
                 .padding(.bottom, 5)
 
-            if let seasonTotals = player.seasonTotals, !seasonTotals.isEmpty {
-                ForEach(seasonTotals, id: \.gameTypeId) { season in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Season: \(formatSeason(season.season))")
-                            .font(.headline)
-                        Text("Team: \(season.teamName?.def ?? "N/A")")
-                        Text("League: \(season.leagueAbbrev ?? "N/A")")
-                        Text("Games Played: \(season.gamesPlayed ?? 0)")
-                        Text("Goals: \(season.goals ?? 0)")
-                        Text("Assists: \(season.assists ?? 0)")
-                        Text("Points: \(season.points ?? 0)")
+            
+            if let seasonTotals = player.seasonTotals {
+                let filteredTotals = filterDuplicatePlayoffStats(from: seasonTotals)
+
+                if !filteredTotals.isEmpty {
+                    ForEach(filteredTotals, id: \.description) { season in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Season: \(formatSeason(season.season))")
+                                .font(.headline)
+
+                            if season.gameTypeId == 3 {
+                                Text("Playoffs")
+                                    .font(.subheadline)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.red)
+                            }
+
+                            Text("Team: \(season.teamName?.def ?? "N/A")")
+                            Text("League: \(season.leagueAbbrev ?? "N/A")")
+                            Text("Games Played: \(season.gamesPlayed ?? 0)")
+                            Text("Goals: \(season.goals ?? 0)")
+                            Text("Assists: \(season.assists ?? 0)")
+                            Text("Points: \(season.points ?? 0)")
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
                     }
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
+                } else {
+                    Text("No stats available")
+                        .italic()
+                        .foregroundColor(.gray)
                 }
             } else {
                 Text("No stats available")
@@ -271,7 +288,31 @@ struct PlayerStatsView: View {
         }
         .padding()
     }
+
+    
+    private func filterDuplicatePlayoffStats(from stats: [NHLSeasonTotal]) -> [NHLSeasonTotal] {
+        var seen = Set<String>()
+        var filtered: [NHLSeasonTotal] = []
+
+        for stat in stats {
+            let key = "\(stat.season)-\(stat.teamName?.def ?? "")-\(stat.leagueAbbrev ?? "")-\(stat.gamesPlayed ?? 0)-\(stat.goals ?? 0)-\(stat.assists ?? 0)-\(stat.points ?? 0)"
+
+            // Skip playoff stat if an identical regular season stat has already been added
+            if stat.gameTypeId == 3 && seen.contains(key) {
+                continue
+            }
+
+            // Only add the first occurrence (prioritize regular season if present first)
+            if !seen.contains(key) {
+                seen.insert(key)
+                filtered.append(stat)
+            }
+        }
+
+        return filtered
+    }
 }
+
 
 struct DetailRow: View {
     let label: String
