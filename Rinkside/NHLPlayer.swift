@@ -246,6 +246,10 @@ struct NHLPlayerSkaterStats: Codable, CustomStringConvertible {
     let position: String
     let value: Double
     
+    var fullName: String {
+        return firstName.def + " " + lastName.def
+    }
+    
     enum CodingKeys: String, CodingKey {
         case playerId = "id"
         case firstName = "firstName"

@@ -351,6 +351,12 @@ struct TableRow: View {
 }
 
 struct CompareStatsSheet: View {
+    @State private var availableSkaters: NHLPlayerSkaterStatsLeaders?
+    @State private var availableGoalies: NHLPlayerGoalieStatsLeaders?
+    
+    @State private var isLoading = false
+    @State private var showAlert = false
+    
     @Binding var compareName: String
     var onSearch: (String) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -366,15 +372,34 @@ struct CompareStatsSheet: View {
                     .padding(.horizontal)
                 
                 Button(action: {
-                    onSearch(compareName)
+                    isLoading = true
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        if let matchedPlayerId = findMatchingPlayer(named: compareName) {
+                            isLoading = false
+                            onSearch("\(matchedPlayerId)")
+                        } else {
+                            isLoading = false
+                            showAlert = true
+                        }
+                    }
                 }) {
-                    Text("Search and Compare")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
+                    if isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.gray.opacity(0.3))
+                            .cornerRadius(10)
+                    } else {
+                        Text("Search and Compare")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
                 }
+                .disabled(isLoading)
                 .padding(.horizontal)
                 
                 Spacer()
@@ -388,8 +413,100 @@ struct CompareStatsSheet: View {
                         dismiss()
                     }
                 }
+            }.onAppear {
+                decodeAvailableSkaters(season: "20242025", gameType: 2, statsType: "points")
+                decodeAvailableGoalies(season: "20242025", gameType: 2, statsType: "wins")
+            } .alert("Player Not Found", isPresented: $showAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("We couldn't find a player matching '\(compareName)'. Please try again.")
             }
         }
+    }
+    
+    private func decodeAvailableSkaters(season: String, gameType: Int, statsType: String) {
+        guard let url = NHLResource.skaterStatsLeadersURL(season: season, gameType: gameType, statsType: statsType) else {
+            print("Cannot create available skaters stats URL for \(season)")
+            return
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let error = error {
+                print(error)
+                return
+            }
+
+            guard let data = data else {
+                print("No data received")
+                return
+            }
+
+            do {
+                let result = try decoder.decode(NHLPlayerSkaterStatsLeaders.self, from: data)
+                DispatchQueue.main.async {
+                    availableSkaters = result
+                    
+                }
+            } catch {
+                print(error)
+            }
+        }.resume()
+    }
+
+    private func decodeAvailableGoalies(season: String, gameType: Int, statsType: String) {
+        guard let url = NHLResource.goalieStatsLeadersURL(season: season, gameType: gameType, statsType: statsType) else {
+            print("Cannot create available goalie stats URL for \(season)")
+            return
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let error = error {
+                print(error)
+                return
+            }
+
+            guard let data = data else {
+                print("No data received")
+                return
+            }
+
+            do {
+                let result = try decoder.decode(NHLPlayerGoalieStatsLeaders.self, from: data)
+                DispatchQueue.main.async {
+                    availableGoalies = result
+                }
+            } catch {
+                print(error)
+            }
+        }.resume()
+    }
+    
+    private func findMatchingPlayer(named name: String) -> Int? {
+        // Search skaters
+        if let skaters = availableSkaters?.points {
+            if let skater = skaters.first(where: { normalized($0.fullName) == normalized(name) }) {
+                return skater.playerId
+            }
+        }
+
+        // Search goalies
+        if let goalies = availableGoalies?.wins {
+            if let goalie = goalies.first(where: { normalized($0.fullName) == normalized(name) }) {
+                return goalie.playerId
+            }
+        }
+
+        return nil
+    }
+    
+    func normalized(_ name: String) -> String {
+        return name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }
 
