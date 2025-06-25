@@ -66,10 +66,13 @@ struct NHLPlayerView: View {
                     showingCompareSheet = true
                 }
             }
-        }
-        .sheet(isPresented: $showingCompareSheet) {
-            CompareStatsSheet(compareName: $compareName) { name in
-                searchPlayerByName(name: name)
+        }.sheet(isPresented: $showingCompareSheet) {
+            CompareStatsSheet(
+                player1Id: playerId,
+                compareName: $compareName
+            ) { player2Id in
+                self.secondPlayerId = player2Id
+                self.navigateToCompare = true
             }
         }
 
@@ -351,6 +354,8 @@ struct TableRow: View {
 }
 
 struct CompareStatsSheet: View {
+    let player1Id: Int
+    
     @State private var availableSkaters: NHLPlayerSkaterStatsLeaders?
     @State private var availableGoalies: NHLPlayerGoalieStatsLeaders?
     
@@ -358,8 +363,9 @@ struct CompareStatsSheet: View {
     @State private var showAlert = false
     
     @Binding var compareName: String
-    var onSearch: (String) -> Void
+    var onSearch: (Int) -> Void
     @Environment(\.dismiss) private var dismiss
+         
     
     var body: some View {
         NavigationView {
@@ -377,7 +383,8 @@ struct CompareStatsSheet: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         if let matchedPlayerId = findMatchingPlayer(named: compareName) {
                             isLoading = false
-                            onSearch("\(matchedPlayerId)")
+                            onSearch(matchedPlayerId)
+                            dismiss()
                         } else {
                             isLoading = false
                             showAlert = true
