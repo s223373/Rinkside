@@ -8,6 +8,8 @@ import SwiftUI
 
 struct NHLFantasyTeamHubView: View {
     @ObservedObject private var fantasyTeam: NHLFantasyTeam
+    
+    @ObservedObject private var fantasyLeague: NHLFantasyTeamLeague
 
     
     @State private var activeForwards: [NHLPlayer] = []
@@ -45,8 +47,9 @@ struct NHLFantasyTeamHubView: View {
         }
     }
 
-    public init(fantasyTeam: NHLFantasyTeam) {
+    public init(fantasyTeam: NHLFantasyTeam, fantasyLeague: NHLFantasyTeamLeague) {
         self.fantasyTeam = fantasyTeam
+        self.fantasyLeague = fantasyLeague
     }
 
     enum FantasyPositionGroup {
@@ -70,7 +73,7 @@ struct NHLFantasyTeamHubView: View {
                 .cornerRadius(8)
 
             if !fantasyTeam.getCompletedDraft() {
-                NavigationLink(destination: NHLFantasyDraftView(fantasyTeam: fantasyTeam)) {
+                NavigationLink(destination: NHLFantasyDraftView(fantasyTeam: fantasyTeam, fantasyLeague: fantasyLeague)) {
                     HStack {
                         Text("Complete Draft")
                             .font(.title2)

@@ -30,8 +30,13 @@ struct NHLFantasyDraftView: View {
     @State private var statsGoalieType: String = "wins"
     
     @State private var lastSelectedPlayer: NHLPlayerSkaterStats? = nil
+    @State private var lastCPUSelections: [(teamName: String, player: NHLPlayerSkaterStats)] = []
+    @State private var lastCPUPlayer: (teamName: String, player: NHLPlayerSkaterStats)? = nil
+
+
 
     private var fantasyTeam: NHLFantasyTeam
+    private var fantasyLeague: NHLFantasyTeamLeague
     
     private var forwardsCount: Int {
         fantasyTeam.draftedPlayers.filter {
@@ -71,8 +76,9 @@ struct NHLFantasyDraftView: View {
         }
     }
 
-    public init(fantasyTeam: NHLFantasyTeam) {
+    public init(fantasyTeam: NHLFantasyTeam, fantasyLeague: NHLFantasyTeamLeague) {
         self.fantasyTeam = fantasyTeam
+        self.fantasyLeague = fantasyLeague
     }
 
     private let skaterCategories = ["Goals", "Assists", "Points"]
@@ -137,6 +143,38 @@ struct NHLFantasyDraftView: View {
                         .cornerRadius(10)
                         .padding(.horizontal)
                     }
+                    
+                    if let cpuDraft = lastCPUPlayer {
+                        HStack {
+                            if let url = URL(string: cpuDraft.player.headshot) {
+                                AsyncImage(url: url) { image in
+                                    image.resizable()
+                                        .scaledToFill()
+                                        .frame(width: 50, height: 50)
+                                        .clipShape(Circle())
+                                } placeholder: {
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.3))
+                                        .frame(width: 50, height: 50)
+                                }
+                            }
+
+                            VStack(alignment: .leading) {
+                                Text("\(cpuDraft.teamName) selected:")
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                                Text("\(cpuDraft.player.firstName.def) \(cpuDraft.player.lastName.def)")
+                                    .font(.headline)
+                            }
+
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                        .padding(.horizontal)
+                    }
+
 
                     SkaterSectionView(
                         title: "Forwards",
@@ -153,7 +191,10 @@ struct NHLFantasyDraftView: View {
                         },
                         setLastSelected: { player in
                             lastSelectedPlayer = player
-                        }, onDraftCompleted: checkDraftCompletion
+                        }, onDraftCompleted: checkDraftCompletion,
+                        onCPUSelection: {
+                            draftForOtherTeams()
+                        }
                     )
 
                     SkaterSectionView(
@@ -171,7 +212,10 @@ struct NHLFantasyDraftView: View {
                         },
                         setLastSelected: { player in
                             lastSelectedPlayer = player
-                        }, onDraftCompleted: checkDraftCompletion
+                        }, onDraftCompleted: checkDraftCompletion,
+                        onCPUSelection: {
+                            draftForOtherTeams()
+                        }
                     )
 
 
@@ -189,8 +233,25 @@ struct NHLFantasyDraftView: View {
                         },
                         setLastSelected: { player in
                             lastSelectedPlayer = player
-                        }, onDraftCompleted: checkDraftCompletion
+                        }, onDraftCompleted: checkDraftCompletion,
+                        onCPUSelection: {
+                            draftForOtherTeams()
+                        }
                     )
+                    
+                    if !lastCPUSelections.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("CPU Drafted Players:")
+                                .font(.headline)
+                                .padding(.top)
+
+                            ForEach(lastCPUSelections, id: \.player.playerId) { selection in
+                                Text("\(selection.teamName) drafted \(selection.player.firstName.def) \(selection.player.lastName.def)")
+                                    .font(.subheadline)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
 
 
                 }
@@ -236,6 +297,26 @@ struct NHLFantasyDraftView: View {
             )
         }
     }
+    
+    private func draftForOtherTeams() {
+        for team in fantasyLeague.teams {
+            guard team.id != fantasyTeam.id else { continue }
+
+            let shouldPickSkater = Bool.random(probability: 0.8)
+
+            if shouldPickSkater, let randomSkater = allAvailableSkaters.randomElement() {
+                team.addPlayer(randomSkater)
+                allAvailableSkaters.removeAll { $0.playerId == randomSkater.playerId }
+                lastCPUPlayer = (team.getName(), randomSkater)
+            } else if let randomGoalie = allAvailableGoalies.randomElement() {
+                team.addPlayer(randomGoalie)
+                allAvailableGoalies.removeAll { $0.playerId == randomGoalie.playerId }
+                lastCPUPlayer = (team.getName(), randomGoalie)
+            }
+        }
+    }
+
+
 
     private func decodeAvailableSkaters(season: String, gameType: Int, statsType: String) {
         guard let url = NHLResource.skaterStatsLeadersURL(season: season, gameType: gameType, statsType: statsType) else {
@@ -391,6 +472,7 @@ struct PlayerRow: View {
     let onPlayerSelected: () -> Void
     let onAfterSelection: () -> Void
     let onDraftCompleted: () -> Void
+    let onCPUSelection: () -> Void
     let setLastSelected: (NHLPlayerSkaterStats) -> Void
 
     var trimmedString: String {
@@ -403,6 +485,7 @@ struct PlayerRow: View {
             onPlayerSelected()
             setLastSelected(player)
             onAfterSelection()
+            onCPUSelection()
             onDraftCompleted()
         }) {
             HStack {
@@ -430,6 +513,7 @@ struct SkaterSectionView: View {
     let onPlayerDrafted: () -> Void
     let setLastSelected: (NHLPlayerSkaterStats) -> Void
     let onDraftCompleted: () -> Void
+    let onCPUSelection: () -> Void
 
     var body: some View {
         Section(header: Text("\(title)")) {
@@ -455,11 +539,13 @@ struct SkaterSectionView: View {
                         onDraftCompleted: {
                             onDraftCompleted()
                         },
+                        onCPUSelection: {
+                            onCPUSelection()
+                        },
                         setLastSelected: { player in
                             setLastSelected(player)
                         }
-                    )
-                }
+                    )                }
                 .frame(height: 300)
             }
         }
@@ -476,6 +562,7 @@ struct GoalieSectionView: View {
     let onPlayerDrafted: () -> Void
     let setLastSelected: (NHLPlayerSkaterStats) -> Void
     let onDraftCompleted: () -> Void
+    let onCPUSelection: () -> Void
 
     var body: some View {
         Section(header: Text("Goalies")) {
@@ -499,7 +586,11 @@ struct GoalieSectionView: View {
                             onPlayerDrafted()
                         },
                         onDraftCompleted: {
-                            onDraftCompleted()},
+                            onDraftCompleted()
+                        },
+                        onCPUSelection: {
+                            onCPUSelection()
+                        },
                         setLastSelected: {_ in
                             setLastSelected(player)
                         }

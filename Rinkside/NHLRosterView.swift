@@ -24,66 +24,30 @@ struct NHLRosterView: View {
     
     var body: some View {
         NavigationView {
-            VStack {
-                NavigationLink(destination: NHLTeamScheduleView(teamIdentifier: teamId)) {
-                    HStack {
-                        Image(systemName: "calendar")
-                            .font(.title)
-                        Text("View Full Schedule")
-                            .font(.title2)
-                            .fontWeight(.semibold)
+            ZStack {
+                // Background gradient
+                LinearGradient(
+                    gradient: Gradient(colors: [Color(.systemBackground), Color(.systemGray6)]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+                
+                VStack(spacing: 0) {
+                    // Header section with action buttons
+                    headerSection
+                    
+                    if isLoading {
+                        loadingView
+                    } else {
+                        rosterContent
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-                    .padding()
-                }
-                NavigationLink(destination: NHLClubStatsView(teamId: teamId)) {
-                    HStack {
-                        Image(systemName: "chart.bar")
-                            .font(.title)
-                        Text("View Team Stats")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.green)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-                    .padding(.horizontal)
-                }
-                if isLoading {
-                    ProgressView("Loading Roster...")
-                        .padding()
-                } else {
-                    List {
-                        createSection(title: "Forwards", players: players?.forwards)
-                        createSection(title: "Defensemen", players: players?.defensemen)
-                        createSection(title: "Goalies", players: players?.goalies)
-                        
-                    }
-                    .listStyle(InsetGroupedListStyle())
                 }
             }
             .navigationTitle("Team Roster")
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                Menu {
-                    ForEach(availableSeasons, id: \.self) { season in
-                        Button(action: {
-                            seasonId = season
-                            isLoading = true
-                            decodeRoster(teamId: teamId)
-                            decodeProspects(teamId: teamId)
-                        }) {
-                            Text("\(formattedSeason(season))")
-                        }
-                    }
-                } label: {
-                    Label("Select Season", systemImage: "calendar")
-                }
+                seasonSelectionMenu
             }
             .onAppear {
                 decodeRoster(teamId: teamId)
@@ -92,49 +56,258 @@ struct NHLRosterView: View {
         }
     }
     
+    // MARK: - Header Section
+    private var headerSection: some View {
+        VStack(spacing: 16) {
+            // Schedule button
+            NavigationLink(destination: NHLTeamScheduleView(teamIdentifier: teamId)) {
+                ActionButton(
+                    icon: "calendar",
+                    title: "View Full Schedule",
+                    subtitle: "Games & Results",
+                    backgroundColor: .blue,
+                    foregroundColor: .white
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            // Stats button
+            NavigationLink(destination: NHLClubStatsView(teamId: teamId)) {
+                ActionButton(
+                    icon: "chart.bar.fill",
+                    title: "View Team Stats",
+                    subtitle: "Performance Analytics",
+                    backgroundColor: .green,
+                    foregroundColor: .white
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 10)
+        .padding(.bottom, 20)
+    }
+    
+    // MARK: - Loading View
+    private var loadingView: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.5)
+                .progressViewStyle(CircularProgressViewStyle(tint: .blue))
+            
+            Text("Loading Roster...")
+                .font(.title3)
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
+    }
+    
+    // MARK: - Roster Content
+    private var rosterContent: some View {
+        ScrollView {
+            LazyVStack(spacing: 24) {
+                createSection(title: "Forwards", players: players?.forwards, icon: "figure.hockey", color: .red)
+                createSection(title: "Defensemen", players: players?.defensemen, icon: "shield.fill", color: .blue)
+                createSection(title: "Goalies", players: players?.goalies, icon: "target", color: .orange)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+        }
+        .background(Color(.systemBackground))
+    }
+    
+    // MARK: - Season Selection Menu
+    private var seasonSelectionMenu: some View {
+        Menu {
+            ForEach(availableSeasons, id: \.self) { season in
+                Button(action: {
+                    seasonId = season
+                    isLoading = true
+                    decodeRoster(teamId: teamId)
+                    decodeProspects(teamId: teamId)
+                }) {
+                    HStack {
+                        Text("\(formattedSeason(season))")
+                        if season == seasonId {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack {
+                Image(systemName: "calendar")
+                Text(formattedSeason(seasonId))
+                    .font(.caption)
+                    .fontWeight(.semibold)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color(.systemGray5))
+            .foregroundColor(.primary)
+            .cornerRadius(20)
+        }
+    }
+    
+    // MARK: - Action Button Component
+    struct ActionButton: View {
+        let icon: String
+        let title: String
+        let subtitle: String
+        let backgroundColor: Color
+        let foregroundColor: Color
+        
+        var body: some View {
+            HStack(spacing: 16) {
+                Image(systemName: icon)
+                    .font(.system(size: 24, weight: .semibold))
+                    .frame(width: 40, height: 40)
+                    .background(foregroundColor.opacity(0.2))
+                    .foregroundColor(foregroundColor)
+                    .clipShape(Circle())
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    Text(subtitle)
+                        .font(.caption)
+                        .opacity(0.8)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .opacity(0.6)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(backgroundColor.opacity(0.1))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(backgroundColor.opacity(0.3), lineWidth: 1)
+            )
+            .cornerRadius(16)
+        }
+    }
+    
+    // MARK: - Player Row Component
     struct PlayerRow: View {
         let player: NHLPerson
         let description: String
         
         var body: some View {
-            HStack(spacing: 15) {
+            HStack(spacing: 16) {
+                // Player headshot
                 AsyncImage(url: URL(string: player.headshot)) { image in
-                    image.resizable()
-                        .scaledToFit()
-                        .frame(width: 50, height: 50)
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 60, height: 60)
                         .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .stroke(Color(.systemGray4), lineWidth: 1)
+                        )
                 } placeholder: {
                     Circle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 50, height: 50)
+                        .fill(LinearGradient(
+                            gradient: Gradient(colors: [Color(.systemGray5), Color(.systemGray4)]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 60, height: 60)
+                        .overlay(
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.secondary)
+                        )
                 }
-                VStack(alignment: .leading) {
+                
+                // Player info
+                VStack(alignment: .leading, spacing: 4) {
                     Text("\(player.firstName.def) \(player.lastName.def)")
-                        .font(.body)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                    
                     Text(description)
-                        .font(.caption)
-                        .foregroundColor(.gray)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+                
+                Spacer()
+                
+                // Jersey number
+                if let jerseyNumber = player.sweaterNumber {
+                    Text("#\(jerseyNumber)")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
                 }
             }
-            .padding(.vertical, 5)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .background(Color(.systemBackground))
+            .cornerRadius(12)
+            .shadow(color: Color(.systemGray4).opacity(0.3), radius: 2, x: 0, y: 1)
         }
     }
     
+    // MARK: - Section Creation
     @ViewBuilder
-    func createSection(title: String, players: [NHLPerson]?) -> some View {
+    func createSection(title: String, players: [NHLPerson]?, icon: String, color: Color) -> some View {
         if let players = players, !players.isEmpty {
-            Section(header: Text(title).font(.headline)) {
-                ForEach(players, id: \.id) { player in
-                    NavigationLink(destination: NHLPlayerView(playerId: player.id)) {
-                        PlayerRow(player: player, description: playerShortDescription(from: player))
+            VStack(alignment: .leading, spacing: 12) {
+                // Section header
+                HStack {
+                    Image(systemName: icon)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(color)
+                        .frame(width: 32, height: 32)
+                        .background(color.opacity(0.1))
+                        .clipShape(Circle())
+                    
+                    Text(title)
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
+                    Text("\(players.count) players")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal, 4)
+                
+                // Players list
+                LazyVStack(spacing: 8) {
+                    ForEach(players, id: \.id) { player in
+                        NavigationLink(destination: NHLPlayerView(playerId: player.id)) {
+                            PlayerRow(player: player, description: playerShortDescription(from: player))
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
             }
-        } else {
-            EmptyView()
         }
     }
     
+    // MARK: - Network Functions
     func decodeRoster(teamId: String) {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -201,16 +374,17 @@ struct NHLRosterView: View {
         dataTask.resume()
     }
     
+    // MARK: - Helper Functions
     func formattedSeason(_ seasonId: String) -> String {
         let start = seasonId.prefix(4)
         let end = seasonId.suffix(4)
         return "\(start)-\(end)"
     }
     
-    
     func playerShortDescription(from player: NHLPerson) -> String {
-        return "#\(player.sweaterNumber ?? 0) | \(calculateAge(from: player.birthDate)!) yo | \(player.positionCode) | \(player.weightInPounds) lbs | \(getHeight(from: player.heightInInches)) in"
-        
+        let age = calculateAge(from: player.birthDate) ?? 0
+        let height = getHeight(from: player.heightInInches)
+        return "\(age) yo • \(player.positionCode) • \(player.weightInPounds) lbs • \(height)"
     }
     
     func calculateAge(from dateString: String, with format: String = "yyyy-MM-dd") -> Int? {
@@ -230,7 +404,7 @@ struct NHLRosterView: View {
     }
     
     func getHeight(from heightInInches: Int) -> String {
-        return "\(heightInInches / 12)' \(heightInInches % 12)"
+        return "\(heightInInches / 12)' \(heightInInches % 12)\""
     }
     
     struct NHLRosterView_Previews: PreviewProvider {
