@@ -47,18 +47,23 @@ class NHLFantasyTeam: Identifiable, Codable, Equatable, ObservableObject {
     }
     
     public func addPlayer(_ player: NHLPlayerSkaterStats) {
-        let player = convertNHLPlayer(playerId: player.playerId)!
-        players.append(player)
+        // Add the player ID to the drafted set first
+        draftedPlayerIds.insert(player.playerId)
+        
+        // Then convert and add the player
+        let convertedPlayer = convertNHLPlayer(playerId: player.playerId)!
+        players.append(convertedPlayer)
     }
-    
+
     public func convertNHLPlayer(playerId: Int) -> NHLPlayer? {
-        draftedPlayerIds.insert(playerId)
+        // Remove this line since we're now handling it in addPlayer
+        // draftedPlayerIds.insert(playerId)
         
         var player: NHLPlayer?
         let decoder = JSONDecoder()
         
         let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd" 
+        dateFormatter.dateFormat = "yyyy-MM-dd"
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         decoder.dateDecodingStrategy = .formatted(dateFormatter)
@@ -112,5 +117,6 @@ class NHLFantasyTeam: Identifiable, Codable, Equatable, ObservableObject {
     
     func clearPlayers() {
         players.removeAll()
+        draftedPlayerIds.removeAll()
     }
 }

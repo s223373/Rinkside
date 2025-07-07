@@ -304,14 +304,28 @@ struct NHLFantasyDraftView: View {
 
             let shouldPickSkater = Bool.random(probability: 0.8)
 
-            if shouldPickSkater, let randomSkater = allAvailableSkaters.randomElement() {
-                team.addPlayer(randomSkater)
-                allAvailableSkaters.removeAll { $0.playerId == randomSkater.playerId }
-                lastCPUPlayer = (team.getName(), randomSkater)
-            } else if let randomGoalie = allAvailableGoalies.randomElement() {
-                team.addPlayer(randomGoalie)
-                allAvailableGoalies.removeAll { $0.playerId == randomGoalie.playerId }
-                lastCPUPlayer = (team.getName(), randomGoalie)
+            if shouldPickSkater {
+                // Filter out already drafted players for this specific team
+                let availableSkaters = allAvailableSkaters.filter { !team.hasDrafted($0.playerId) }
+                
+                if let randomSkater = availableSkaters.randomElement() {
+                    team.addPlayer(randomSkater)
+                    // Remove from global available lists
+                    allAvailableSkaters.removeAll { $0.playerId == randomSkater.playerId }
+                    allAvailableGoalies.removeAll { $0.playerId == randomSkater.playerId }
+                    lastCPUPlayer = (team.getName(), randomSkater)
+                }
+            } else {
+                // Filter out already drafted players for this specific team
+                let availableGoalies = allAvailableGoalies.filter { !team.hasDrafted($0.playerId) }
+                
+                if let randomGoalie = availableGoalies.randomElement() {
+                    team.addPlayer(randomGoalie)
+                    // Remove from global available lists
+                    allAvailableSkaters.removeAll { $0.playerId == randomGoalie.playerId }
+                    allAvailableGoalies.removeAll { $0.playerId == randomGoalie.playerId }
+                    lastCPUPlayer = (team.getName(), randomGoalie)
+                }
             }
         }
     }
@@ -342,8 +356,14 @@ struct NHLFantasyDraftView: View {
                 let result = try decoder.decode(NHLPlayerSkaterStatsLeaders.self, from: data)
                 DispatchQueue.main.async {
                     availableSkaters = result
-                    allAvailableSkaters = getSkatersList(from: result, for: statsSkaterType)
-                        .filter { !fantasyTeam.hasDrafted($0.playerId) }
+                    let allSkaters = getSkatersList(from: result, for: statsSkaterType)
+                    
+                    // Filter out players drafted by ANY team in the league
+                    allAvailableSkaters = allSkaters.filter { player in
+                        !fantasyLeague.teams.contains { team in
+                            team.hasDrafted(player.playerId)
+                        }
+                    }
                     isSkaterLoading = false
                 }
             } catch {
@@ -376,8 +396,14 @@ struct NHLFantasyDraftView: View {
                 let result = try decoder.decode(NHLPlayerGoalieStatsLeaders.self, from: data)
                 DispatchQueue.main.async {
                     availableGoalies = result
-                    allAvailableGoalies = getGoalieList(from: result, for: statsGoalieType)
-                        .filter { !fantasyTeam.hasDrafted($0.playerId) }
+                    let allGoalies = getGoalieList(from: result, for: statsGoalieType)
+                    
+                    // Filter out players drafted by ANY team in the league
+                    allAvailableGoalies = allGoalies.filter { player in
+                        !fantasyLeague.teams.contains { team in
+                            team.hasDrafted(player.playerId)
+                        }
+                    }
                     isGoalieLoading = false
                 }
             } catch {
