@@ -12,6 +12,7 @@ struct NHLRosterView: View {
     @State private var isPlayerActive: Bool = false
     @State private var isLoading: Bool = true
     @State private var seasonId: String = "20242025"
+    @State private var showingStats = false
     private let teamId: String
     
     public init (teamIdentifier: String) {
@@ -50,7 +51,7 @@ struct NHLRosterView: View {
                 seasonSelectionMenu
             }
             .onAppear {
-                decodeRoster(teamId: teamId)
+                decodeRoster(teamId: teamId, seasonId: seasonId)
                 decodeProspects(teamId: teamId)
             }
         }
@@ -71,15 +72,23 @@ struct NHLRosterView: View {
             }
             .buttonStyle(PlainButtonStyle())
             
-            // Stats button
-            NavigationLink(destination: NHLClubStatsView(teamId: teamId)) {
-                ActionButton(
-                    icon: "chart.bar.fill",
-                    title: "View Team Stats",
-                    subtitle: "Performance Analytics",
-                    backgroundColor: .green,
-                    foregroundColor: .white
-                )
+            // Stats button - Using NavigationLink with dynamic destination
+            NavigationLink(
+                destination: NHLClubStatsView(teamId: teamId, seasonId: seasonId),
+                isActive: $showingStats
+            ) {
+                Button(action: {
+                    showingStats = true
+                }) {
+                    ActionButton(
+                        icon: "chart.bar.fill",
+                        title: "View Team Stats",
+                        subtitle: "Performance Analytics",
+                        backgroundColor: .green,
+                        foregroundColor: .white
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
             }
             .buttonStyle(PlainButtonStyle())
         }
@@ -125,7 +134,7 @@ struct NHLRosterView: View {
                 Button(action: {
                     seasonId = season
                     isLoading = true
-                    decodeRoster(teamId: teamId)
+                    decodeRoster(teamId: teamId, seasonId: seasonId)
                     decodeProspects(teamId: teamId)
                 }) {
                     HStack {
@@ -308,7 +317,7 @@ struct NHLRosterView: View {
     }
     
     // MARK: - Network Functions
-    func decodeRoster(teamId: String) {
+    func decodeRoster(teamId: String, seasonId: String) {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let url = NHLResource.currentRosterURL(for: teamId, with: seasonId) else {

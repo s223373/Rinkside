@@ -55,8 +55,8 @@ struct NHLResource {
         return URL(string: "\(baseRosterURL)/gamecenter/\(gameId)/boxscore")
     }
     
-    public static func regularSeasonClubStatsURL(for teamId: String) -> URL? {
-        return URL(string: "\(baseRosterURL)/club-stats/\(teamId)/20242025/2")
+    public static func regularSeasonClubStatsURL(for teamId: String, with seasonId: String) -> URL? {
+        return URL(string: "\(baseRosterURL)/club-stats/\(teamId)/\(seasonId)/2")
     }
     
     public static func skaterStatsLeadersURL(season: String, gameType: Int, statsType: String) -> URL? {

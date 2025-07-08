@@ -11,14 +11,21 @@ struct NHLClubStatsView: View {
     @State private var selectedSkaterCategory = "Points"
     @State private var selectedGoalieCategory = "Wins"
     @State private var isLoading = true
+    @State private var seasonId: String = "20242025"
     
     private let teamId: String
     
     private let skaterCategories = ["Points", "Goals", "Assists"]
     private let goalieCategories = ["Goals Against Average", "Save Percentage", "Wins"]
     
-    public init(teamId: String) {
+    // Available seasons - same as NHLRosterView
+    private let availableSeasons = [
+        "20242025", "20232024", "20222023", "20212022", "20202021"
+    ]
+    
+    public init(teamId: String, seasonId: String = "20242025") {
         self.teamId = teamId
+        self._seasonId = State(initialValue: seasonId)
     }
     
     var body: some View {
@@ -105,10 +112,46 @@ struct NHLClubStatsView: View {
         }
         .navigationTitle("Team Stats")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            seasonSelectionMenu
+        }
         .onAppear {
             if clubStats == nil {
                 decodeRegularSeasonTeamStats()
             }
+        }
+    }
+    
+    // MARK: - Season Selection Menu
+    private var seasonSelectionMenu: some View {
+        Menu {
+            ForEach(availableSeasons, id: \.self) { season in
+                Button(action: {
+                    seasonId = season
+                    isLoading = true
+                    clubStats = nil // Clear existing stats
+                    decodeRegularSeasonTeamStats()
+                }) {
+                    HStack {
+                        Text("\(formattedSeason(season))")
+                        if season == seasonId {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack {
+                Image(systemName: "calendar")
+                Text(formattedSeason(seasonId))
+                    .font(.caption)
+                    .fontWeight(.semibold)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color(.systemGray5))
+            .foregroundColor(.primary)
+            .cornerRadius(20)
         }
     }
     
@@ -149,12 +192,19 @@ struct NHLClubStatsView: View {
         default: return "Wins: \(goalie.wins ?? 0), Games Played: \(goalie.gamesPlayed ?? 0)"
         }
     }
+    
+    // MARK: - Helper Functions
+    func formattedSeason(_ seasonId: String) -> String {
+        let start = seasonId.prefix(4)
+        let end = seasonId.suffix(4)
+        return "\(start)-\(end)"
+    }
 
     func decodeRegularSeasonTeamStats() {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         
-        guard let url = NHLResource.regularSeasonClubStatsURL(for: teamId) else {
+        guard let url = NHLResource.regularSeasonClubStatsURL(for: teamId, with: seasonId) else {
             print("Invalid URL")
             DispatchQueue.main.async {
                 self.isLoading = false
