@@ -4,20 +4,25 @@
 //
 //  Created by Nik Bar on 4/6/25.
 //
-//
-//  NHLPlayerCompareView.swift
-//  Rinkside
-//
-//  Created by Nik Bar on 4/6/25.
-//
 import SwiftUI
 
 struct NHLPlayerCompareView: View {
-    let player1Id: Int
-    let player2Id: Int
+    @State private var player1Id: Int
+    @State private var player2Id: Int
     
     @State private var player1Info: NHLPlayer?
     @State private var player2Info: NHLPlayer?
+    @State private var showingPlayerSearch = false
+    @State private var searchingForPlayer: PlayerSlot = .player1
+    
+    enum PlayerSlot {
+        case player1, player2
+    }
+    
+    init(player1Id: Int, player2Id: Int) {
+        self._player1Id = State(initialValue: player1Id)
+        self._player2Id = State(initialValue: player2Id)
+    }
 
     var body: some View {
         ScrollView {
@@ -52,10 +57,28 @@ struct NHLPlayerCompareView: View {
             }
         }
         .background(Color(.systemGroupedBackground))
-        .onAppear {
-            decodePlayer(playerId: player1Id, p1Flag: true)
-            decodePlayer(playerId: player2Id, p1Flag: false)
+        .sheet(isPresented: $showingPlayerSearch) {
+            PlayerSearchView(onPlayerSelected: { playerId in
+                if searchingForPlayer == .player1 {
+                    player1Id = playerId
+                    player1Info = nil
+                    decodePlayer(playerId: playerId, p1Flag: true)
+                } else {
+                    player2Id = playerId
+                    player2Info = nil
+                    decodePlayer(playerId: playerId, p1Flag: false)
+                }
+                showingPlayerSearch = false
+            })
         }
+        .onAppear {
+            loadPlayers()
+        }
+    }
+    
+    private func loadPlayers() {
+        decodePlayer(playerId: player1Id, p1Flag: true)
+        decodePlayer(playerId: player2Id, p1Flag: false)
     }
     
     private func headerView() -> some View {
@@ -100,9 +123,34 @@ struct NHLPlayerCompareView: View {
     }
     
     private func playerCard(for player: NHLPlayer, season: NHLSeasonTotal?, isPlayoffs: Bool, position: CardPosition) -> some View {
-        let rating = calculateRating(for: season)
+        let rating = calculateRating(for: season, position: player.position)
         
         return VStack(spacing: 20) {
+            // Change player button
+            Button(action: {
+                searchingForPlayer = position == .left ? .player1 : .player2
+                showingPlayerSearch = true
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.2.squarepath")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Change Player")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(LinearGradient(
+                            gradient: Gradient(colors: [.blue, .purple]),
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ))
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            
             // Player photo and basic info
             VStack(spacing: 12) {
                 ZStack {
@@ -341,9 +389,9 @@ struct NHLPlayerCompareView: View {
             .first
     }
 
-    private func calculateRating(for season: NHLSeasonTotal?) -> Int? {
+    private func calculateRating(for season: NHLSeasonTotal?, position: String?) -> Int? {
         guard let season = season else { return nil }
-        let raw = PlayerRatingEngine.calculateRawSkaterScore(for: season)
+        let raw = PlayerRatingEngine.calculateRawSkaterScore(for: season, position: position)
         return PlayerRatingEngine.scaleToRating(rawScore: raw, mean: 60, stdDev: 10)
     }
 
@@ -363,6 +411,547 @@ struct NHLPlayerCompareView: View {
     func removeCommas(from numberString: String) -> String {
         return numberString.replacingOccurrences(of: ",", with: "")
     }
+}
+
+// MARK: - Player Search View
+// MARK: - Player Search View
+struct PlayerSearchView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+    @State private var availableSkaters: NHLPlayerSkaterStatsLeaders?
+    @State private var availableGoalies: NHLPlayerGoalieStatsLeaders?
+    @State private var filteredPlayers: [PlayerSuggestion] = []
+    @State private var showingSuggestions = false
+    @State private var isLoading = false
+    
+    let onPlayerSelected: (Int) -> Void
+    
+    // Helper struct for player suggestions
+    struct PlayerSuggestion: Identifiable {
+        let id = UUID()
+        let playerId: Int
+        let fullName: String
+        let position: String
+        let team: String
+    }
+    
+    var body: some View {
+        NavigationView {
+            GeometryReader { geometry in
+                ZStack {
+                    // Background gradient
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color.blue.opacity(0.1),
+                            Color.purple.opacity(0.1)
+                        ]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .ignoresSafeArea()
+                    
+                    ScrollView {
+                        VStack(spacing: 24) {
+                            // Header section
+                            VStack(spacing: 16) {
+                                Image(systemName: "person.2.fill")
+                                    .font(.system(size: 60))
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: [.blue, .purple],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .shadow(radius: 2)
+                                
+                                Text("Find Player")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.primary)
+                                
+                                Text("Search for an NHL player to select for comparison")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal)
+                            }
+                            .padding(.top, 20)
+                            
+                            // Search section
+                            VStack(spacing: 16) {
+                                // Search bar with autocomplete
+                                VStack(spacing: 0) {
+                                    HStack {
+                                        Image(systemName: "magnifyingglass")
+                                            .foregroundColor(.secondary)
+                                            .font(.system(size: 16))
+                                        
+                                        TextField("Search for a player...", text: $searchText)
+                                            .textFieldStyle(PlainTextFieldStyle())
+                                            .onChange(of: searchText) { _, newValue in
+                                                filterPlayers(searchText: newValue)
+                                            }
+                                            .onSubmit {
+                                                if let firstSuggestion = filteredPlayers.first {
+                                                    selectPlayer(firstSuggestion)
+                                                }
+                                            }
+                                        
+                                        if !searchText.isEmpty {
+                                            Button(action: {
+                                                searchText = ""
+                                                filteredPlayers = []
+                                                showingSuggestions = false
+                                            }) {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .foregroundColor(.secondary)
+                                                    .font(.system(size: 16))
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Color(.systemBackground))
+                                            .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+                                    )
+                                    
+                                    // Suggestions dropdown
+                                    if showingSuggestions && !filteredPlayers.isEmpty {
+                                        VStack(spacing: 0) {
+                                            ForEach(filteredPlayers.prefix(8)) { suggestion in
+                                                Button(action: {
+                                                    selectPlayer(suggestion)
+                                                }) {
+                                                    HStack {
+                                                        // Player avatar placeholder
+                                                        Circle()
+                                                            .fill(LinearGradient(
+                                                                gradient: Gradient(colors: [Color.blue.opacity(0.2), Color.purple.opacity(0.2)]),
+                                                                startPoint: .topLeading,
+                                                                endPoint: .bottomTrailing
+                                                            ))
+                                                            .frame(width: 40, height: 40)
+                                                            .overlay(
+                                                                Text(String(suggestion.fullName.prefix(2)))
+                                                                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                                                                    .foregroundColor(.primary)
+                                                            )
+                                                        
+                                                        VStack(alignment: .leading, spacing: 2) {
+                                                            Text(suggestion.fullName)
+                                                                .font(.system(size: 15, weight: .medium))
+                                                                .foregroundColor(.primary)
+                                                            
+                                                            HStack(spacing: 8) {
+                                                                Text(suggestion.position)
+                                                                    .font(.caption)
+                                                                    .padding(.horizontal, 6)
+                                                                    .padding(.vertical, 2)
+                                                                    .background(
+                                                                        RoundedRectangle(cornerRadius: 4)
+                                                                            .fill(Color.blue.opacity(0.2))
+                                                                    )
+                                                                    .foregroundColor(.blue)
+                                                                
+                                                                Text(suggestion.team)
+                                                                    .font(.caption)
+                                                                    .foregroundColor(.secondary)
+                                                            }
+                                                        }
+                                                        
+                                                        Spacer()
+                                                        
+                                                        Image(systemName: "chevron.right")
+                                                            .font(.caption)
+                                                            .foregroundColor(.secondary)
+                                                    }
+                                                    .padding(.horizontal, 16)
+                                                    .padding(.vertical, 12)
+                                                    .background(Color(.systemBackground))
+                                                }
+                                                .buttonStyle(PlainButtonStyle())
+                                                
+                                                if suggestion.id != filteredPlayers.prefix(8).last?.id {
+                                                    Divider()
+                                                        .padding(.horizontal, 16)
+                                                }
+                                            }
+                                        }
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .fill(Color(.systemBackground))
+                                                .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                                        )
+                                        .padding(.top, 4)
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                            }
+                            
+                            // Empty state or loading
+                            if filteredPlayers.isEmpty && searchText.isEmpty {
+                                VStack(spacing: 20) {
+                                    Image(systemName: "person.2.fill")
+                                        .font(.system(size: 50))
+                                        .foregroundColor(.blue.opacity(0.6))
+                                    
+                                    Text("Search for NHL Players")
+                                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                                        .foregroundColor(.primary)
+                                    
+                                    Text("Start typing a player's name to see suggestions")
+                                        .font(.system(size: 14, weight: .regular, design: .rounded))
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                                .padding(.top, 40)
+                            } else if filteredPlayers.isEmpty && !searchText.isEmpty && !isLoading {
+                                VStack(spacing: 20) {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.system(size: 50))
+                                        .foregroundColor(.gray.opacity(0.6))
+                                    
+                                    Text("No players found")
+                                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                                        .foregroundColor(.primary)
+                                    
+                                    Text("Try adjusting your search terms")
+                                        .font(.system(size: 14, weight: .regular, design: .rounded))
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.top, 40)
+                            }
+                            
+                            // Tips section
+                            VStack(spacing: 12) {
+                                HStack {
+                                    Image(systemName: "lightbulb")
+                                        .foregroundColor(.orange)
+                                        .font(.system(size: 16))
+                                    
+                                    Text("Tips")
+                                        .font(.headline)
+                                        .foregroundColor(.primary)
+                                    
+                                    Spacer()
+                                }
+                                
+                                VStack(alignment: .leading, spacing: 8) {
+                                    TipRow(icon: "magnifyingglass", text: "Start typing to see player suggestions")
+                                    TipRow(icon: "hand.tap", text: "Tap on a suggestion to select")
+                                    TipRow(icon: "keyboard", text: "Press return to select the first result")
+                                }
+                            }
+                            .padding(16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color(.secondarySystemBackground))
+                                    .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+                            )
+                            .padding(.horizontal, 20)
+                            
+                            Spacer(minLength: 40)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Find Player")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .foregroundColor(.blue)
+                }
+            }
+            .onAppear {
+                loadPlayerData()
+            }
+            .onTapGesture {
+                // Dismiss suggestions when tapping outside
+                if showingSuggestions {
+                    showingSuggestions = false
+                }
+            }
+        }
+    }
+    
+    // MARK: - Helper Views
+    
+    private struct TipRow: View {
+        let icon: String
+        let text: String
+        
+        var body: some View {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .foregroundColor(.secondary)
+                    .font(.system(size: 14))
+                    .frame(width: 16)
+                
+                Text(text)
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+            }
+        }
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func loadPlayerData() {
+        isLoading = true
+        decodeAvailableSkaters(season: "20242025", gameType: 2, statsType: "points")
+        decodeAvailableGoalies(season: "20242025", gameType: 2, statsType: "wins")
+    }
+    
+    private func selectPlayer(_ suggestion: PlayerSuggestion) {
+        searchText = suggestion.fullName
+        filteredPlayers = []
+        showingSuggestions = false
+        
+        // Call the selection callback
+        onPlayerSelected(suggestion.playerId)
+    }
+    
+    private func filterPlayers(searchText: String) {
+        guard !searchText.isEmpty else {
+            filteredPlayers = []
+            showingSuggestions = false
+            return
+        }
+        
+        var suggestions: [PlayerSuggestion] = []
+        let normalizedSearch = normalized(searchText)
+        
+        // Search skaters
+        if let skaters = availableSkaters?.points {
+            for skater in skaters {
+                if normalized(skater.fullName).contains(normalizedSearch) {
+                    suggestions.append(PlayerSuggestion(
+                        playerId: skater.playerId,
+                        fullName: skater.fullName,
+                        position: skater.position ?? "F", // Default to Forward if position is nil
+                        team: skater.teamAbbrev ?? "N/A"
+                    ))
+                }
+            }
+        }
+        
+        // Search goalies
+        if let goalies = availableGoalies?.wins {
+            for goalie in goalies {
+                if normalized(goalie.fullName).contains(normalizedSearch) {
+                    suggestions.append(PlayerSuggestion(
+                        playerId: goalie.playerId,
+                        fullName: goalie.fullName,
+                        position: "G",
+                        team: goalie.teamAbbrev ?? "N/A"
+                    ))
+                }
+            }
+        }
+        
+        // Sort suggestions by relevance (exact matches first, then alphabetical)
+        suggestions.sort { first, second in
+            let firstExact = normalized(first.fullName).hasPrefix(normalizedSearch)
+            let secondExact = normalized(second.fullName).hasPrefix(normalizedSearch)
+            
+            if firstExact && !secondExact {
+                return true
+            } else if !firstExact && secondExact {
+                return false
+            } else {
+                return first.fullName < second.fullName
+            }
+        }
+        
+        filteredPlayers = suggestions
+        showingSuggestions = !suggestions.isEmpty
+    }
+    
+    private func decodeAvailableSkaters(season: String, gameType: Int, statsType: String) {
+        guard let url = NHLResource.skaterStatsLeadersURL(season: season, gameType: gameType, statsType: statsType) else {
+            print("Cannot create available skaters stats URL for \(season)")
+            return
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let error = error {
+                print(error)
+                return
+            }
+
+            guard let data = data else {
+                print("No data received")
+                return
+            }
+
+            do {
+                let result = try decoder.decode(NHLPlayerSkaterStatsLeaders.self, from: data)
+                DispatchQueue.main.async {
+                    availableSkaters = result
+                    isLoading = false
+                }
+            } catch {
+                print(error)
+                DispatchQueue.main.async {
+                    isLoading = false
+                }
+            }
+        }.resume()
+    }
+
+    private func decodeAvailableGoalies(season: String, gameType: Int, statsType: String) {
+        guard let url = NHLResource.goalieStatsLeadersURL(season: season, gameType: gameType, statsType: statsType) else {
+            print("Cannot create available goalie stats URL for \(season)")
+            return
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let error = error {
+                print(error)
+                return
+            }
+
+            guard let data = data else {
+                print("No data received")
+                return
+            }
+
+            do {
+                let result = try decoder.decode(NHLPlayerGoalieStatsLeaders.self, from: data)
+                DispatchQueue.main.async {
+                    availableGoalies = result
+                    isLoading = false
+                }
+            } catch {
+                print(error)
+                DispatchQueue.main.async {
+                    isLoading = false
+                }
+            }
+        }.resume()
+    }
+    
+    private func normalized(_ name: String) -> String {
+        return name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+// MARK: - Search Bar
+struct SearchBar: View {
+    @Binding var text: String
+    var onSearchButtonClicked: () -> Void
+    
+    var body: some View {
+        HStack {
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.gray)
+                
+                TextField("Search for a player...", text: $text)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .onSubmit {
+                        onSearchButtonClicked()
+                    }
+                
+                if !text.isEmpty {
+                    Button(action: {
+                        text = ""
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(.systemGray6))
+            .cornerRadius(10)
+        }
+    }
+}
+
+// MARK: - Search Result Row
+struct PlayerSearchResultRow: View {
+    let player: PlayerSearchResult
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                // Player avatar placeholder
+                Circle()
+                    .fill(LinearGradient(
+                        gradient: Gradient(colors: [Color.blue.opacity(0.2), Color.purple.opacity(0.2)]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+                    .frame(width: 50, height: 50)
+                    .overlay(
+                        Text(String(player.name.prefix(2)))
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                    )
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(player.name)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundColor(.primary)
+                    
+                    HStack(spacing: 8) {
+                        Text(player.team)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(Color.blue)
+                            )
+                        
+                        Text(player.position)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(Color.orange)
+                            )
+                    }
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.gray)
+            }
+            .padding(.vertical, 8)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Models
+struct PlayerSearchResult {
+    let playerId: Int
+    let name: String
+    let team: String
+    let position: String
 }
 
 // Enhanced rating circle view

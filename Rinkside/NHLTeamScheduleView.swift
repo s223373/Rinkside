@@ -101,7 +101,7 @@ struct NHLTeamScheduleView: View {
                     Spacer()
                 } else if filteredGames.isEmpty {
                     Spacer()
-                    EmptyStateView(filter: selectedFilter)
+                    EmptyTopPlayersStateView(filter: selectedFilter)
                     Spacer()
                 } else {
                     ScrollView {
@@ -527,7 +527,7 @@ struct GameCardView: View {
     }
 }
 
-struct EmptyStateView: View {
+struct EmptyTopPlayersStateView: View {
     let filter: NHLTeamScheduleView.ScheduleFilter
     
     var body: some View {

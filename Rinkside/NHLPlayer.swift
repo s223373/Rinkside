@@ -1,4 +1,3 @@
-//
 //  NHLPlayer.swift
 //  Rinkside
 //
@@ -42,49 +41,45 @@ struct NHLPlayer: Codable, CustomStringConvertible {
     let last5Games: [NHLGameDetail]
     let seasonTotals: [NHLSeasonTotal]?
     let currentRoster: [NHLPersonShort]?
-    
-    enum CodingKeys: String, CodingKey {
-        case playerId = "playerId"
-        case isActive = "isActive"
-        case currentTeamId = "currentTeamId"
-        case currentTeamAbbrev = "currentTeamAbbrev"
-        case fullTeamName = "fullTeamName"
-        case teamCommonName = "teamCommonName"
-        case teamPlaceNameWithPreposition = "teamPlaceNameWithPreposition"
-        case firstName = "firstName"
-        case lastName = "lastName"
-        case teamLogo = "teamLogo"
-        case sweaterNumber = "sweaterNumber"
-        case position = "position"
-        case headshot = "headshot"
-        case heroImage = "heroImage"
-        case heightInInches = "heightInInches"
-        case heightInCentimeters = "heightInCentimeters"
-        case weightInPounds = "weightInPounds"
-        case weightInKilograms = "weightInKilograms"
-        case birthDate = "birthDate"
-        case birthCity = "birthCity"
-        case birthStateProvince = "birthStateProvince"
-        case birthCountry = "birthCountry"
-        case shootsCatches = "shootsCatches"
-        case draftDetails = "draftDetails"
-        case playerSlug = "playerSlug"
-        case inTop100AllTime = "inTop100AllTime"
-        case inHHOF = "inHHOF"
-        case featuredStats = "featuredStats"
-        case careerTotals = "careerTotals"
-        case shopLink = "shopLink"
-        case twitterLink = "twitterLink"
-        case watchLink = "watchLink"
-        case last5Games = "last5Games"
-        case seasonTotals = "seasonTotals"
-        case currentRoster = "currentRoster"
-    }
-    
+
     var description: String {
-        return "\(firstName) \(lastName)"
+        "\(firstName.def) \(lastName.def)"
     }
-    
+
+    func toSkaterStats(value: Double?) -> NHLPlayerSkaterStats? {
+        guard let seasonStats = seasonTotals?
+                    .filter({ $0.leagueAbbrev == "NHL" })
+                    .max(by: { ($0.season ?? 20242025) < ($1.season ?? 20242025) }),
+                  let gamesPlayed = seasonStats.gamesPlayed,
+                  gamesPlayed >= 25 else {
+                return nil
+            }
+
+            return NHLPlayerSkaterStats(
+                playerId: playerId,
+                firstName: firstName,
+                lastName: lastName,
+                sweaterNumber: sweaterNumber,
+                headshot: headshot,
+                teamAbbrev: (currentTeamAbbrev) ?? "N/A",
+                teamName: fullTeamName ?? NHLType(def: "N/A"),
+                teamLogo: (teamLogo) ?? "N/A",
+                position: position,
+                value: value ?? Double(seasonStats.points ?? 0),
+                gamesPlayed: seasonStats.gamesPlayed,
+                goals: seasonStats.goals,
+                assists: seasonStats.assists,
+                points: seasonStats.points,
+                plusMinus: seasonStats.plusMinus,
+                pim: seasonStats.pim,
+                wins: seasonStats.wins,
+                losses: seasonStats.losses,
+                shutouts: seasonStats.shutouts,
+                savePctg: seasonStats.savePctg,
+                goalsAgainstAvg: seasonStats.goalsAgainstAvg,
+                calculatedRating: nil
+            )
+        }
 }
 
 struct NHLDraftDetails: Codable, CustomStringConvertible {
@@ -93,15 +88,7 @@ struct NHLDraftDetails: Codable, CustomStringConvertible {
     let round: Int
     let pickInRound: Int
     let overallPick: Int
-    
-    enum CodingKeys: String, CodingKey {
-        case year = "year"
-        case teamAbbrev = "teamAbbrev"
-        case round = "round"
-        case pickInRound = "pickInRound"
-        case overallPick = "overallPick"
-    }
-    
+
     var description: String {
         "\(year) \(teamAbbrev) \(round) \(pickInRound) \(overallPick)"
     }
@@ -130,39 +117,13 @@ struct NHLGameDetail: Codable, CustomStringConvertible {
     let shifts: Int?
     let shorthandedGoals: Int?
     let shots: Int?
-    
-    enum CodingKeys: String, CodingKey {
-        case decision = "decision"
-        case gameDate = "gameDate"
-        case gameId = "gameId"
-        case gameTypeId = "gameTypeId"
-        case gamesStarted = "gamesStarted"
-        case goalsAgainst = "goalsAgainst"
-        case homeRoadFlag = "homeRoadFlag"
-        case opponentAbbrev = "opponentAbbrev"
-        case penaltyMinutes = "penaltyMinutes"
-        case savePctg = "savePctg"
-        case shotsAgainst = "shotsAgainst"
-        case teamAbbrev = "teamAbbrev"
-        case toi = "toi"
-        case assists = "assists"
-        case goals = "goals"
-        case pim = "pim"
-        case plusMinus = "plusMinus"
-        case points = "points"
-        case powerPlayGoals = "powerPlayGoals"
-        case shifts = "shifts"
-        case shorthandedGoals = "shorthandedGoals"
-        case shots = "shots"
-    }
-    
+
     var description: String {
-        return "\(teamAbbrev) vs \(opponentAbbrev)"
+        "\(teamAbbrev) vs \(opponentAbbrev)"
     }
 }
 
 struct NHLSeasonTotal: Codable, CustomStringConvertible {
-    
     let gameTypeId: Int?
     let gamesPlayed: Int?
     let goalsAgainstAvg: Double?
@@ -185,34 +146,36 @@ struct NHLSeasonTotal: Codable, CustomStringConvertible {
     let teamPlaceNameWithPreposition: NHLType?
     let plusMinus: Int?
     let gamesStarted: Int?
-    
-    enum CodingKeys: String, CodingKey {
-        case gameTypeId = "gameTypeId"
-        case gamesPlayed = "gamesPlayed"
-        case goalsAgainstAvg = "goalsAgainstAvg"
-        case goalsAgainst = "goalsAgainst"
-        case leagueAbbrev = "leagueAbbrev"
-        case savePctg = "savePctg"
-        case season = "season"
-        case sequence = "sequence"
-        case losses = "losses"
-        case wins = "wins"
-        case ties = "ties"
-        case timeOnIce = "timeOnIce"
-        case shutouts = "shutouts"
-        case teamName = "teamName"
-        case assists = "assists"
-        case goals = "goals"
-        case points = "points"
-        case pim = "pim"
-        case otLosses = "otLosses"
-        case teamPlaceNameWithPreposition = "teamPlaceNameWithPreposition"
-        case plusMinus = "plusMinus"
-        case gamesStarted = "gamesStarted"
-    }
-    
+
     var description: String {
-        return "\(teamName) - \(season) - \(sequence) - \(points) - \(goals) - \(assists)"
+        "\(teamName?.def ?? "Unknown") - \(season ?? 0) - \(sequence ?? 0) - \(points ?? 0) - \(goals ?? 0) - \(assists ?? 0)"
+    }
+
+    func toSkaterStats(player: NHLPlayer, value: Double?) -> NHLPlayerSkaterStats {
+        return NHLPlayerSkaterStats(
+            playerId: player.playerId,
+            firstName: player.firstName,
+            lastName: player.lastName,
+            sweaterNumber: player.sweaterNumber,
+            headshot: player.headshot,
+            teamAbbrev: player.currentTeamAbbrev ?? "",
+            teamName: player.fullTeamName ?? NHLType(def: ""),
+            teamLogo: player.teamLogo ?? "",
+            position: player.position,
+            value: value ?? 0.0,
+            gamesPlayed: gamesPlayed,
+            goals: goals,
+            assists: assists,
+            points: points,
+            plusMinus: plusMinus,
+            pim: pim,
+            wins: wins,
+            losses: losses,
+            shutouts: shutouts,
+            savePctg: savePctg,
+            goalsAgainstAvg: goalsAgainstAvg,
+            calculatedRating: nil
+        )
     }
 }
 
@@ -221,20 +184,13 @@ struct NHLPersonShort: Codable, CustomStringConvertible {
     let firstName: NHLType
     let lastName: NHLType
     let playerSlug: String
-    
-    enum CodingKeys: String, CodingKey {
-        case playerId = "playerId"
-        case firstName = "firstName"
-        case lastName = "lastName"
-        case playerSlug = "playerSlug"
-    }
-    
+
     var description: String {
-        return "\(firstName) \(lastName)"
+        "\(firstName.def) \(lastName.def)"
     }
 }
 
-struct NHLPlayerSkaterStats: Codable, CustomStringConvertible {
+struct NHLPlayerSkaterStats: Codable, CustomStringConvertible, Identifiable {
     let playerId: Int
     let firstName: NHLType
     let lastName: NHLType
@@ -245,26 +201,96 @@ struct NHLPlayerSkaterStats: Codable, CustomStringConvertible {
     let teamLogo: String
     let position: String
     let value: Double
-    
+    let gamesPlayed: Int?
+    let goals: Int?
+    let assists: Int?
+    let points: Int?
+    let plusMinus: Int?
+    let pim: Int?
+    let wins: Int?
+    let losses: Int?
+    let shutouts: Int?
+    let savePctg: Double?
+    let goalsAgainstAvg: Double?
+    var calculatedRating: Int?
+
+    var id: Int { playerId }
+
     var fullName: String {
-        return firstName.def + " " + lastName.def
+        firstName.def + " " + lastName.def
     }
-    
-    enum CodingKeys: String, CodingKey {
-        case playerId = "id"
-        case firstName = "firstName"
-        case lastName = "lastName"
-        case sweaterNumber = "sweaterNumber"
-        case headshot = "headshot"
-        case teamAbbrev = "teamAbbrev"
-        case teamName = "teamName"
-        case teamLogo = "teamLogo"
-        case position = "position"
-        case value = "value"
+
+    func toNHLPlayer() -> NHLPlayer {
+        let seasonTotal = NHLSeasonTotal(
+            gameTypeId: 2,
+            gamesPlayed: gamesPlayed,
+            goalsAgainstAvg: goalsAgainstAvg,
+            goalsAgainst: nil,
+            leagueAbbrev: "NHL",
+            savePctg: savePctg,
+            season: 20242025,
+            sequence: 1,
+            losses: losses,
+            wins: wins,
+            ties: nil,
+            timeOnIce: nil,
+            shutouts: shutouts,
+            teamName: teamName,
+            assists: assists,
+            goals: goals,
+            points: points,
+            pim: pim,
+            otLosses: nil,
+            teamPlaceNameWithPreposition: nil,
+            plusMinus: plusMinus,
+            gamesStarted: nil
+        )
+
+        return NHLPlayer(
+            playerId: playerId,
+            isActive: true,
+            currentTeamId: nil,
+            currentTeamAbbrev: teamAbbrev,
+            fullTeamName: teamName,
+            teamCommonName: teamName,
+            teamPlaceNameWithPreposition: nil,
+            firstName: firstName,
+            lastName: lastName,
+            teamLogo: teamLogo,
+            sweaterNumber: sweaterNumber,
+            position: position,
+            headshot: headshot,
+            heroImage: headshot,
+            heightInInches: 0,
+            heightInCentimeters: 0,
+            weightInPounds: 0,
+            weightInKilograms: 0,
+            birthDate: nil,
+            birthCity: NHLType(def: ""),
+            birthStateProvince: nil,
+            birthCountry: "",
+            shootsCatches: "",
+            draftDetails: nil,
+            playerSlug: "\(firstName.def.lowercased())-\(lastName.def.lowercased())",
+            inTop100AllTime: 0,
+            inHHOF: 0,
+            featuredStats: nil,
+            careerTotals: nil,
+            shopLink: "",
+            twitterLink: "",
+            watchLink: "",
+            last5Games: [],
+            seasonTotals: [seasonTotal],
+            currentRoster: nil
+        )
     }
-    
+
+    mutating func setCalculatedRating(_ rating: Int) {
+        calculatedRating = rating
+    }
+
     var description: String {
-        return "\(playerId)"
+        "\(playerId)"
     }
 }
 
@@ -272,15 +298,9 @@ struct NHLPlayerSkaterStatsLeaders: Codable, CustomStringConvertible {
     let goals: [NHLPlayerSkaterStats]?
     let assists: [NHLPlayerSkaterStats]?
     let points: [NHLPlayerSkaterStats]?
-    
-    enum CodingKeys: String, CodingKey {
-        case goals = "goals"
-        case assists = "assists"
-        case points = "points"
-    }
-    
+
     var description: String {
-        return "\(goals?.first?.playerId ?? 0)"
+        "\(goals?.first?.playerId ?? 0)"
     }
 }
 
@@ -288,14 +308,8 @@ struct NHLPlayerGoalieStatsLeaders: Codable, CustomStringConvertible {
     let wins: [NHLPlayerSkaterStats]?
     let savePctg: [NHLPlayerSkaterStats]?
     let goalsAgainstAverage: [NHLPlayerSkaterStats]?
-    
-    enum CodingKeys: String, CodingKey {
-        case wins = "wins"
-        case savePctg = "savePctg"
-        case goalsAgainstAverage = "goalsAgainstAverage"
-    }
-    
+
     var description: String {
-        return "\(wins?.first?.playerId ?? 0)"
+        "\(wins?.first?.playerId ?? 0)"
     }
 }

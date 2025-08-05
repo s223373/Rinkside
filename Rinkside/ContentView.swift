@@ -108,6 +108,15 @@ struct ContentView: View {
                                 gradientColors: [.green, .mint],
                                 delay: 0.3
                             )
+                            
+                            NavigationMenuButton(
+                                destination: TopPlayersView(),
+                                icon: "star.fill",
+                                title: "Top Scorers",
+                                subtitle: "League's best players",
+                                gradientColors: [.purple, .pink],
+                                delay: 0.4
+                            )
                         }
                         .opacity(animateButtons ? 1.0 : 0.0)
                         .offset(y: animateButtons ? 0 : 20)

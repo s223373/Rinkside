@@ -48,10 +48,10 @@ class NHLFantasyTeam: Identifiable, Codable, Equatable, ObservableObject {
     
     public func addPlayer(_ player: NHLPlayerSkaterStats) {
         // Add the player ID to the drafted set first
-        draftedPlayerIds.insert(player.playerId)
+        draftedPlayerIds.insert(player.playerId ?? -1)
         
         // Then convert and add the player
-        let convertedPlayer = convertNHLPlayer(playerId: player.playerId)!
+        let convertedPlayer = convertNHLPlayer(playerId: player.playerId ?? -1)!
         players.append(convertedPlayer)
     }
 

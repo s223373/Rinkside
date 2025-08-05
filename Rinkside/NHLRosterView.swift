@@ -117,9 +117,15 @@ struct NHLRosterView: View {
     private var rosterContent: some View {
         ScrollView {
             LazyVStack(spacing: 24) {
+                // Current roster sections
                 createSection(title: "Forwards", players: players?.forwards, icon: "figure.hockey", color: .red)
                 createSection(title: "Defensemen", players: players?.defensemen, icon: "shield.fill", color: .blue)
                 createSection(title: "Goalies", players: players?.goalies, icon: "target", color: .orange)
+                
+                // Prospects sections (filtered to remove current roster players)
+                createSection(title: "Prospect Forwards", players: filteredProspects(prospects?.forwards), icon: "star.fill", color: .purple)
+                createSection(title: "Prospect Defensemen", players: filteredProspects(prospects?.defensemen), icon: "star.circle.fill", color: .indigo)
+                createSection(title: "Prospect Goalies", players: filteredProspects(prospects?.goalies), icon: "star.square.fill", color: .mint)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
@@ -388,6 +394,36 @@ struct NHLRosterView: View {
         let start = seasonId.prefix(4)
         let end = seasonId.suffix(4)
         return "\(start)-\(end)"
+    }
+    
+    func filteredProspects(_ prospectPlayers: [NHLPerson]?) -> [NHLPerson]? {
+        guard let prospectPlayers = prospectPlayers else { return nil }
+        
+        // Get all current roster player IDs
+        var currentRosterPlayerIds = Set<String>()
+        
+        if let forwards = players?.forwards {
+                    for player in forwards {
+                        currentRosterPlayerIds.insert("\(player.id)")
+                    }
+                }
+                if let defensemen = players?.defensemen {
+                    for player in defensemen {
+                        currentRosterPlayerIds.insert("\(player.id)")
+                    }
+                }
+                if let goalies = players?.goalies {
+                    for player in goalies {
+                        currentRosterPlayerIds.insert("\(player.id)")
+                    }
+                }
+                
+        // Filter out prospects who are already in the current roster
+        let filteredProspects = prospectPlayers.filter { prospect in
+            !currentRosterPlayerIds.contains("\(prospect.id)")
+        }
+        
+        return filteredProspects.isEmpty ? nil : filteredProspects
     }
     
     func playerShortDescription(from player: NHLPerson) -> String {
