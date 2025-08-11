@@ -10,6 +10,7 @@ import SwiftUI
 struct TopPlayersView: View {
     @StateObject private var viewModel = TopPlayersViewModel()
     @State private var selectedPlayerType: PlayerType = .skater
+    @State private var searchText = ""
     
     enum PlayerType: String, CaseIterable {
         case skater = "Skaters"
@@ -19,6 +20,11 @@ struct TopPlayersView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
+                // Search bar
+                TopPlayersSearchBar(text: $searchText, placeholder: "Search players...")
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                
                 // Player type selector
                 Picker("Player Type", selection: $selectedPlayerType) {
                     ForEach(PlayerType.allCases, id: \.self) { type in
@@ -44,7 +50,10 @@ struct TopPlayersView: View {
                 viewModel.loadTopPlayers()
             }
             .onChange(of: selectedPlayerType) { _ in
-                viewModel.filterPlayers(by: selectedPlayerType)
+                viewModel.filterPlayers(by: selectedPlayerType, searchText: searchText)
+            }
+            .onChange(of: searchText) { _ in
+                viewModel.filterPlayers(by: selectedPlayerType, searchText: searchText)
             }
         }
     }
@@ -65,6 +74,60 @@ struct TopPlayersView: View {
     }
 }
 
+struct TopPlayersSearchBar: View {
+    @Binding var text: String
+    let placeholder: String
+    @State private var isEditing = false
+    
+    var body: some View {
+        HStack {
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                    .font(.system(size: 16))
+                
+                TextField(placeholder, text: $text)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .onTapGesture {
+                        isEditing = true
+                    }
+                
+                if !text.isEmpty {
+                    Button(action: {
+                        text = ""
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                            .font(.system(size: 16))
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(.systemGray6))
+            .cornerRadius(10)
+            
+            if isEditing {
+                Button("Cancel") {
+                    isEditing = false
+                    text = ""
+                    hideKeyboard()
+                }
+                .foregroundColor(.blue)
+                .transition(.move(edge: .trailing))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: isEditing)
+    }
+}
+
+// Extension to hide keyboard
+extension View {
+    func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
 struct PlayerRankingRow: View {
     let player: NHLPlayerSkaterStats
     let rank: Int
@@ -79,21 +142,32 @@ struct PlayerRankingRow: View {
                 .foregroundColor(.secondary)
                 .frame(width: 30, alignment: .leading)
             
-            // Player headshot
-            AsyncImage(url: URL(string: player.headshot)) { image in
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } placeholder: {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.3))
-                    .overlay(
-                        Image(systemName: "person.fill")
-                            .foregroundColor(.gray)
-                    )
+            // Player headshot with hot streak indicator
+            ZStack(alignment: .topTrailing) {
+                AsyncImage(url: URL(string: player.headshot)) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .overlay(
+                            Image(systemName: "person.fill")
+                                .foregroundColor(.gray)
+                        )
+                }
+                .frame(width: 50, height: 50)
+                .clipShape(Circle())
+                
+                // Hot streak fire indicator
+                if player.isOnHotStreak {
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.orange)
+                        .background(Circle().fill(Color.white).frame(width: 20, height: 20))
+                        .offset(x: 5, y: -5)
+                }
             }
-            .frame(width: 50, height: 50)
-            .clipShape(Circle())
             
             // Player info and stats
             VStack(alignment: .leading, spacing: 4) {
@@ -262,7 +336,7 @@ struct EmptyStateView: View {
                 .font(.title2)
                 .fontWeight(.medium)
                 .padding(.top, 16)
-            Text("Try refreshing or check your connection")
+            Text("Try adjusting your search or filter")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .padding(.top, 4)
@@ -312,8 +386,8 @@ class TopPlayersViewModel: ObservableObject {
             // Merge duplicates from different leaderboards
             let uniqueLeaders = self.removeDuplicates(from: allSkaters + allGoalies)
 
-            // Fetch full player data for each unique leader
-            self.fetchFullPlayers(for: uniqueLeaders) { fullPlayers in
+            // Fetch full player data for each unique leader including hot streak analysis
+            self.fetchFullPlayersWithHotStreaks(for: uniqueLeaders) { fullPlayers in
                 // Separate skaters and goalies
                 let skaters = fullPlayers.filter { $0.position != "G" }
                 let goalies = fullPlayers.filter { $0.position == "G" }
@@ -327,36 +401,13 @@ class TopPlayersViewModel: ObservableObject {
                     .sorted { ($0.calculatedRating ?? 0) > ($1.calculatedRating ?? 0) }
 
                 // Default filter to skaters
-                self.filterPlayers(by: .skater)
+                self.filterPlayers(by: .skater, searchText: "")
                 self.isLoading = false
             }
         }
     }
-
-
-    // ✅ Fetch complete stats for a list of players
-    private func fetchCompleteStats(for players: [NHLPlayerSkaterStats], completion: @escaping ([NHLPlayerSkaterStats]) -> Void) {
-        let group = DispatchGroup()
-        var results: [NHLPlayerSkaterStats] = []
-
-        for player in players {
-            group.enter()
-            fetchPlayerStats(playerId: player.playerId) { fullStats in
-                if let stats = fullStats {
-                    results.append(stats)
-                } else {
-                    results.append(player) // fallback to partial
-                }
-                group.leave()
-            }
-        }
-
-        group.notify(queue: .main) {
-            completion(results)
-        }
-    }
     
-    private func fetchFullPlayers(for leaders: [NHLPlayerSkaterStats], completion: @escaping ([NHLPlayerSkaterStats]) -> Void) {
+    private func fetchFullPlayersWithHotStreaks(for leaders: [NHLPlayerSkaterStats], completion: @escaping ([NHLPlayerSkaterStats]) -> Void) {
         let group = DispatchGroup()
         var results = [NHLPlayerSkaterStats]()
         
@@ -377,7 +428,13 @@ class TopPlayersViewModel: ObservableObject {
                 do {
                     // The NHL API returns the player object directly, not wrapped in a "player" key
                     let player = try JSONDecoder().decode(NHLPlayer.self, from: data)
-                    if let stats = player.toSkaterStats(value: leader.value) {
+                    if var stats = player.toSkaterStats(value: leader.value) {
+                        // Determine hot streak status based on position
+                        if stats.position == "G" {
+                            stats.isOnHotStreak = self.isGoalieOnHotStreak(player.last5Games)
+                        } else {
+                            stats.isOnHotStreak = self.isSkaterOnHotStreak(player.last5Games)
+                        }
                         results.append(stats)
                     } else {
                         // Fallback to leader data if conversion fails
@@ -395,59 +452,42 @@ class TopPlayersViewModel: ObservableObject {
             completion(results)
         }
     }
-
-
-
-    // ✅ Fetch full stats for a single player
-    private func fetchPlayerStats(playerId: Int, completion: @escaping (NHLPlayerSkaterStats?) -> Void) {
-        guard let url = NHLResource.basePlayerLandingURL(for: playerId) else {
-            completion(nil)
-            return
-        }
-
-        URLSession.shared.dataTask(with: url) { data, _, _ in
-            guard let data = data else { completion(nil); return }
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            do {
-                let stats = try decoder.decode(NHLPlayerSkaterStats.self, from: data)
-                completion(stats)
-            } catch {
-                completion(nil)
-            }
-        }.resume()
-    }
-
-    // ✅ Merge two player stats objects without overwriting valid data
-    private func mergeStats(base: NHLPlayerSkaterStats, extra: NHLPlayerSkaterStats) -> NHLPlayerSkaterStats {
-        return NHLPlayerSkaterStats(
-            playerId: base.playerId,
-            firstName: base.firstName,
-            lastName: base.lastName,
-            sweaterNumber: base.sweaterNumber ?? extra.sweaterNumber,
-            headshot: base.headshot.isEmpty ? extra.headshot : base.headshot,
-            teamAbbrev: base.teamAbbrev.isEmpty ? extra.teamAbbrev : base.teamAbbrev,
-            teamName: base.teamName,
-            teamLogo: base.teamLogo.isEmpty ? extra.teamLogo : base.teamLogo,
-            position: base.position.isEmpty ? extra.position : base.position,
-            value: base.value > 0 ? base.value : extra.value,
-            gamesPlayed: base.gamesPlayed ?? extra.gamesPlayed,
-            goals: base.goals ?? extra.goals,
-            assists: base.assists ?? extra.assists,
-            points: base.points ?? extra.points,
-            plusMinus: base.plusMinus ?? extra.plusMinus,
-            pim: base.pim ?? extra.pim,
-            wins: base.wins ?? extra.wins,
-            losses: base.losses ?? extra.losses,
-            shutouts: base.shutouts ?? extra.shutouts,
-            savePctg: base.savePctg ?? extra.savePctg,
-            goalsAgainstAvg: base.goalsAgainstAvg ?? extra.goalsAgainstAvg,
-            calculatedRating: base.calculatedRating
-        )
+    
+    private func isSkaterOnHotStreak(_ last5Games: [NHLGameDetail]) -> Bool {
+        guard !last5Games.isEmpty else { return false }
+        
+        let totalGoals = last5Games.compactMap { $0.goals }.reduce(0, +)
+        let totalAssists = last5Games.compactMap { $0.assists }.reduce(0, +)
+        let totalPoints = last5Games.compactMap { $0.points }.reduce(0, +)
+        
+        // Hot streak criteria for skaters:
+        // 1. 1.5 times more points than games played (1.5 PPG over 5 games = 7.5+ points)
+        // 2. 4 or more goals in last 5 games
+        // 3. 6 or more assists in last 5 games
+        let pointsThreshold = Int(1.5 * Double(last5Games.count))
+        
+        return totalPoints >= pointsThreshold || totalGoals >= 4 || totalAssists >= 6
     }
     
-    // REMOVED: fetchCompleteStats, fetchPlayerStats, mergePlayerStats functions
-    // These were causing the problem by overwriting the good stats with empty data
+    private func isGoalieOnHotStreak(_ last5Games: [NHLGameDetail]) -> Bool {
+        guard !last5Games.isEmpty else { return false }
+        
+        let gamesWithSavePct = last5Games.compactMap { $0.savePctg }
+        let gamesWithGAA = last5Games.compactMap { $0.goalsAgainst }
+        let wins = last5Games.filter { $0.decision == "W" }.count
+        
+        // Calculate average save percentage
+        let avgSavePct = gamesWithSavePct.isEmpty ? 0.0 : gamesWithSavePct.reduce(0, +) / Double(gamesWithSavePct.count)
+        
+        // Calculate average goals against (GAA approximation)
+        let avgGoalsAgainst = gamesWithGAA.isEmpty ? 0.0 : Double(gamesWithGAA.reduce(0, +)) / Double(gamesWithGAA.count)
+        
+        // Hot streak criteria for goalies:
+        // 1. Average save percentage > 0.925 over last 5 games
+        // 2. Average goals against < 1.75 over last 5 games
+        // 3. Won all 5 games
+        return avgSavePct > 0.925 || avgGoalsAgainst < 1.75 || wins == 5
+    }
     
     private func loadSkaters(statType: String, completion: @escaping ([NHLPlayerSkaterStats]) -> Void) {
         guard let url = NHLResource.skaterStatsLeadersURL(season: season, gameType: gameType, statsType: statType) else {
@@ -545,24 +585,6 @@ class TopPlayersViewModel: ObservableObject {
         }
     }
     
-    private func getSkatersList(from stats: NHLPlayerSkaterStatsLeaders, for type: String) -> [NHLPlayerSkaterStats] {
-        switch type {
-        case "goals": return stats.goals ?? []
-        case "assists": return stats.assists ?? []
-        case "points": return stats.points ?? []
-        default: return []
-        }
-    }
-    
-    private func getGoalieList(from stats: NHLPlayerGoalieStatsLeaders, for type: String) -> [NHLPlayerSkaterStats] {
-        switch type {
-        case "wins": return stats.wins ?? []
-        case "savePctg": return stats.savePctg ?? []
-        case "goalsAgainstAverage": return stats.goalsAgainstAverage ?? []
-        default: return []
-        }
-    }
-    
     private func removeDuplicates(from players: [NHLPlayerSkaterStats]) -> [NHLPlayerSkaterStats] {
         var playerDict: [Int: NHLPlayerSkaterStats] = [:]
         
@@ -592,7 +614,8 @@ class TopPlayersViewModel: ObservableObject {
                     shutouts: player.shutouts ?? existing.shutouts,
                     savePctg: player.savePctg ?? existing.savePctg,
                     goalsAgainstAvg: player.goalsAgainstAvg ?? existing.goalsAgainstAvg,
-                    calculatedRating: nil
+                    calculatedRating: nil,
+                    isOnHotStreak: false
                 )
                 playerDict[player.playerId] = merged
             } else {
@@ -676,17 +699,33 @@ class TopPlayersViewModel: ObservableObject {
         )
     }
     
-    func filterPlayers(by type: TopPlayersView.PlayerType) {
+    func filterPlayers(by type: TopPlayersView.PlayerType, searchText: String) {
+        // First filter by player type
+        var playersToFilter: [NHLPlayerSkaterStats]
         switch type {
         case .skater:
-            filteredPlayers = topPlayers.filter { player in
-                player.position != "G"
-            }
+            playersToFilter = topPlayers.filter { $0.position != "G" }
         case .goalie:
-            filteredPlayers = topPlayers.filter { player in
-                player.position == "G"
+            playersToFilter = topPlayers.filter { $0.position == "G" }
+        }
+        
+        // Then apply search filter if search text is not empty
+        if !searchText.isEmpty {
+            let searchLowercase = searchText.lowercased()
+            playersToFilter = playersToFilter.filter { player in
+                let fullName = "\(player.firstName.def) \(player.lastName.def)".lowercased()
+                let firstName = player.firstName.def.lowercased()
+                let lastName = player.lastName.def.lowercased()
+                let teamName = player.teamAbbrev.lowercased()
+                
+                return fullName.contains(searchLowercase) ||
+                       firstName.contains(searchLowercase) ||
+                       lastName.contains(searchLowercase) ||
+                       teamName.contains(searchLowercase)
             }
         }
+        
+        filteredPlayers = playersToFilter
     }
     
     func refreshData() async {
@@ -767,9 +806,8 @@ struct NHLPlayerAPIStats: Codable {
             shutouts: shutouts,
             savePctg: savePctg,
             goalsAgainstAvg: goalsAgainstAvg,
-            calculatedRating: nil
+            calculatedRating: nil,
+            isOnHotStreak: false
         )
     }
 }
-
-

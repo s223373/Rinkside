@@ -77,7 +77,8 @@ struct NHLPlayer: Codable, CustomStringConvertible {
                 shutouts: seasonStats.shutouts,
                 savePctg: seasonStats.savePctg,
                 goalsAgainstAvg: seasonStats.goalsAgainstAvg,
-                calculatedRating: nil
+                calculatedRating: nil,
+                isOnHotStreak: false
             )
         }
 }
@@ -174,7 +175,8 @@ struct NHLSeasonTotal: Codable, CustomStringConvertible {
             shutouts: shutouts,
             savePctg: savePctg,
             goalsAgainstAvg: goalsAgainstAvg,
-            calculatedRating: nil
+            calculatedRating: nil,
+            isOnHotStreak: false
         )
     }
 }
@@ -213,6 +215,7 @@ struct NHLPlayerSkaterStats: Codable, CustomStringConvertible, Identifiable {
     let savePctg: Double?
     let goalsAgainstAvg: Double?
     var calculatedRating: Int?
+    var isOnHotStreak: Bool
 
     var id: Int { playerId }
 
@@ -287,6 +290,10 @@ struct NHLPlayerSkaterStats: Codable, CustomStringConvertible, Identifiable {
 
     mutating func setCalculatedRating(_ rating: Int) {
         calculatedRating = rating
+    }
+    
+    mutating func setHotStreakStatus(_ isHot: Bool) {
+        isOnHotStreak = isHot
     }
 
     var description: String {
