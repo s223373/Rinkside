@@ -13,7 +13,7 @@ class NHLFantasyTeam: Identifiable, Codable, Equatable, ObservableObject {
     
     var id: String
     @Published private var name: String
-    @Published private var players: [NHLPlayer]  = []
+    @Published private var players: [NHLPlayer] = []
     @Published private var completedDraft: Bool = false
     @Published private(set) var draftedPlayerIds: Set<Int> = []
     
@@ -46,6 +46,30 @@ class NHLFantasyTeam: Identifiable, Codable, Equatable, ObservableObject {
         self.completedDraft = completedDraft
     }
     
+    // Calculate total fantasy points for the team
+    public func getTotalFantasyPoints() -> Int {
+        return players.reduce(0) { sum, player in
+            sum + (player.featuredStats?.regularSeason?.subSeason.points ?? 0)
+        }
+    }
+    
+    // Get team composition stats
+    public func getTeamComposition() -> (forwards: Int, defensemen: Int, goalies: Int) {
+        let forwards = players.filter { ["C", "L", "R", "F"].contains($0.position) }.count
+        let defensemen = players.filter { $0.position == "D" }.count
+        let goalies = players.filter { $0.position == "G" }.count
+        return (forwards, defensemen, goalies)
+    }
+    
+    // Get top scorer on the team
+    public func getTopScorer() -> NHLPlayer? {
+        return players.max { player1, player2 in
+            let points1 = player1.featuredStats?.regularSeason?.subSeason.points ?? 0
+            let points2 = player2.featuredStats?.regularSeason?.subSeason.points ?? 0
+            return points1 < points2
+        }
+    }
+    
     public func addPlayer(_ player: NHLPlayerSkaterStats) {
         // Add the player ID to the drafted set first
         draftedPlayerIds.insert(player.playerId ?? -1)
@@ -56,9 +80,6 @@ class NHLFantasyTeam: Identifiable, Codable, Equatable, ObservableObject {
     }
 
     public func convertNHLPlayer(playerId: Int) -> NHLPlayer? {
-        // Remove this line since we're now handling it in addPlayer
-        // draftedPlayerIds.insert(playerId)
-        
         var player: NHLPlayer?
         let decoder = JSONDecoder()
         
@@ -87,33 +108,38 @@ class NHLFantasyTeam: Identifiable, Codable, Equatable, ObservableObject {
     }
     
     func hasDrafted(_ playerId: Int) -> Bool {
-            draftedPlayerIds.contains(playerId)
-        }
+        draftedPlayerIds.contains(playerId)
+    }
     
     enum CodingKeys: String, CodingKey {
-            case id
-            case name
-            case players
-            case completedDraft
-        }
+        case id
+        case name
+        case players
+        case completedDraft
+        case draftedPlayerIds
+    }
 
-        required init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        players = try container.decode([NHLPlayer].self, forKey: .players)
+        completedDraft = try container.decode(Bool.self, forKey: .completedDraft)
+        
+        // Handle draftedPlayerIds if present, otherwise initialize empty
+        draftedPlayerIds = try container.decodeIfPresent(Set<Int>.self, forKey: .draftedPlayerIds) ?? []
+    }
 
-            id = try container.decode(String.self, forKey: .id)
-            name = try container.decode(String.self, forKey: .name)
-            players = try container.decode([NHLPlayer].self, forKey: .players)
-            completedDraft = try container.decode(Bool.self, forKey: .completedDraft)
-        }
-
-        func encode(to encoder: Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
-
-            try container.encode(id, forKey: .id)
-            try container.encode(name, forKey: .name)
-            try container.encode(players, forKey: .players)
-            try container.encode(completedDraft, forKey: .completedDraft)
-        }
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(players, forKey: .players)
+        try container.encode(completedDraft, forKey: .completedDraft)
+        try container.encode(draftedPlayerIds, forKey: .draftedPlayerIds)
+    }
     
     func clearPlayers() {
         players.removeAll()

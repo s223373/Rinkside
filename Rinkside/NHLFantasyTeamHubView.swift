@@ -38,9 +38,7 @@ struct NHLFantasyTeamHubView: View {
     }
 
     private var totalFantasyPoints: Int {
-        fantasyTeam.getPlayers().reduce(0) { sum, player in
-            sum + (player.featuredStats?.regularSeason?.subSeason.points ?? 0)
-        }
+        fantasyTeam.getTotalFantasyPoints()
     }
 
     public init(fantasyTeam: NHLFantasyTeam, fantasyLeague: NHLFantasyTeamLeague) {
@@ -60,10 +58,8 @@ struct NHLFantasyTeamHubView: View {
                 // Header Section
                 headerSection
                 
-                // Draft Button Section
-                if !fantasyTeam.getCompletedDraft() {
-                    draftButtonSection
-                }
+                // Action Buttons Section
+                actionButtonsSection
                 
                 // Active Lineup Section
                 activeLineupSection
@@ -116,10 +112,10 @@ struct NHLFantasyTeamHubView: View {
                 )
                 
                 VStack(spacing: 4) {
-                    Text("\(fantasyTeam.getPlayers().count)")
+                    Text("#\(fantasyLeague.getUserRank())")
                         .font(.system(size: 28, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
-                    Text("Players")
+                    Text("League Rank")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.9))
                 }
@@ -143,33 +139,95 @@ struct NHLFantasyTeamHubView: View {
         .padding(.bottom, 24)
     }
     
-    // MARK: - Draft Button Section
+    // MARK: - Action Buttons Section
     
-    private var draftButtonSection: some View {
-        NavigationLink(destination: NHLFantasyDraftView(fantasyTeam: fantasyTeam, fantasyLeague: fantasyLeague)) {
-            HStack(spacing: 12) {
-                Image(systemName: "person.3.fill")
-                    .font(.title2)
-                Text("Complete Draft")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                Image(systemName: "chevron.right")
-                    .font(.title3)
-            }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.orange, Color.red]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
+    private var actionButtonsSection: some View {
+        VStack(spacing: 16) {
+            // Draft Button (if not completed)
+            if !fantasyTeam.getCompletedDraft() {
+                NavigationLink(destination: NHLFantasyDraftView(fantasyTeam: fantasyTeam, fantasyLeague: fantasyLeague)) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.3.fill")
+                            .font(.title2)
+                        Text("Complete Draft")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                        Image(systemName: "chevron.right")
+                            .font(.title3)
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.orange, Color.red]),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .shadow(color: Color.orange.opacity(0.4), radius: 8, x: 0, y: 4)
                     )
-                    .shadow(color: Color.orange.opacity(0.4), radius: 8, x: 0, y: 4)
-            )
+                }
+            }
+            
+            // Leaderboard Button
+            NavigationLink(destination: NHLFantasyLeaderboardView(fantasyLeague: fantasyLeague)) {
+                HStack(spacing: 12) {
+                    Image(systemName: "list.number")
+                        .font(.title2)
+                    Text("League Leaderboard")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    Image(systemName: "chevron.right")
+                        .font(.title3)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.purple, Color.indigo]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .shadow(color: Color.purple.opacity(0.4), radius: 8, x: 0, y: 4)
+                )
+            }
+            
+            // All Teams Button
+            NavigationLink(destination: NHLFantasyAllTeamsView(fantasyLeague: fantasyLeague)) {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.3.sequence.fill")
+                        .font(.title2)
+                    Text("View All Teams")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    Text("(\(fantasyLeague.leagueSize))")
+                        .font(.title3)
+                        .opacity(0.8)
+                    Image(systemName: "chevron.right")
+                        .font(.title3)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.teal, Color.cyan]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .shadow(color: Color.teal.opacity(0.4), radius: 8, x: 0, y: 4)
+                )
+            }
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)

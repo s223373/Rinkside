@@ -35,6 +35,10 @@ struct NHLFantasyDraftView: View {
     
     @State private var showPositionLimitAlert = false
     @State private var positionLimitMessage = ""
+    
+    // Draft turn management
+    @State private var currentDraftTurn: Int = 0
+    @State private var isProcessingCPUTurn = false
 
     private var fantasyTeam: NHLFantasyTeam
     private var fantasyLeague: NHLFantasyTeamLeague
@@ -79,6 +83,23 @@ struct NHLFantasyDraftView: View {
         forwardsCount >= minForwards &&
         defensemenCount >= minDefensemen &&
         goaliesCount >= maxGoalies
+    }
+    
+    // Get the current team whose turn it is
+    private var currentTeam: NHLFantasyTeam {
+        let teamIndex = currentDraftTurn % fantasyLeague.teams.count
+        return fantasyLeague.teams[teamIndex]
+    }
+    
+    // Check if it's the human player's turn
+    private var isHumanTurn: Bool {
+        let teamIndex = currentDraftTurn % fantasyLeague.teams.count
+        return fantasyLeague.teams[teamIndex].id == fantasyTeam.id
+    }
+    
+    // Get the human player's team index
+    private var humanTeamIndex: Int {
+        return fantasyLeague.teams.firstIndex(where: { $0.id == fantasyTeam.id }) ?? 0
     }
     
     // Helper function to check if a player can be drafted
@@ -137,10 +158,29 @@ struct NHLFantasyDraftView: View {
         NavigationView {
             ScrollView {
                 VStack {
-                    Text("Time Remaining: \(timeRemaining)s")
-                        .font(.headline)
-                        .foregroundColor(.red)
-                        .padding()
+                    // Turn indicator
+                    VStack(spacing: 8) {
+                        if isProcessingCPUTurn {
+                            Text("CPU Turn: \(currentTeam.getName())")
+                                .font(.headline)
+                                .foregroundColor(.orange)
+                                .padding()
+                        } else if isHumanTurn {
+                            Text("Your Turn!")
+                                .font(.headline)
+                                .foregroundColor(.green)
+                                .padding()
+                        } else {
+                            Text("Waiting for: \(currentTeam.getName())")
+                                .font(.headline)
+                                .foregroundColor(.blue)
+                                .padding()
+                        }
+                        
+                        Text("Time Remaining: \(timeRemaining)s")
+                            .font(.subheadline)
+                            .foregroundColor(.red)
+                    }
                     
                     VStack(spacing: 10) {
                         Text("Skaters: \(skatersCount)/\(maxSkaters) | Forwards: \(forwardsCount)/\(maxForwards) | Defense: \(defensemenCount)/\(maxDefensemen) | Goalies: \(goaliesCount)/\(maxGoalies)")
@@ -177,7 +217,7 @@ struct NHLFantasyDraftView: View {
                             }
 
                             VStack(alignment: .leading) {
-                                Text("Last Drafted:")
+                                Text("You Drafted:")
                                     .font(.subheadline)
                                     .foregroundColor(.gray)
                                 Text("\(last.firstName.def) \(last.lastName.def)")
@@ -223,92 +263,109 @@ struct NHLFantasyDraftView: View {
                         .padding(.horizontal)
                     }
 
-                    SkaterSectionView(
-                        title: "Forwards",
-                        selectedCategory: $selectedSkaterCategory,
-                        skaters: .constant(availableForwards),
-                        isLoading: isSkaterLoading,
-                        fantasyTeam: fantasyTeam,
-                        statsType: selectedSkaterCategory.lowercased(),
-                        removePlayer: { player in
-                            allAvailableSkaters.removeAll { $0.playerId == player.playerId }
-                        },
-                        onPlayerDrafted: {
-                            startTimer()
-                        },
-                        setLastSelected: { player in
-                            lastSelectedPlayer = player
-                        }, onDraftCompleted: checkDraftCompletion,
-                        onCPUSelection: {
-                            draftForOtherTeams()
-                        },
-                        canDraftPlayer: canDraftPlayer,
-                        onPositionLimitReached: { message in
-                            positionLimitMessage = message
-                            showPositionLimitAlert = true
-                        }
-                    )
+                    // Only show player lists when it's human turn
+                    if isHumanTurn && !isProcessingCPUTurn {
+                        SkaterSectionView(
+                            title: "Forwards",
+                            selectedCategory: $selectedSkaterCategory,
+                            skaters: .constant(availableForwards),
+                            isLoading: isSkaterLoading,
+                            fantasyTeam: fantasyTeam,
+                            statsType: selectedSkaterCategory.lowercased(),
+                            removePlayer: { player in
+                                allAvailableSkaters.removeAll { $0.playerId == player.playerId }
+                            },
+                            onPlayerDrafted: {
+                                onHumanPlayerDrafted()
+                            },
+                            setLastSelected: { player in
+                                lastSelectedPlayer = player
+                            },
+                            onDraftCompleted: checkDraftCompletion,
+                            onCPUSelection: {
+                                // This will be handled by the turn system
+                            },
+                            canDraftPlayer: canDraftPlayer,
+                            onPositionLimitReached: { message in
+                                positionLimitMessage = message
+                                showPositionLimitAlert = true
+                            }
+                        )
 
-                    SkaterSectionView(
-                        title: "Defensemen",
-                        selectedCategory: $selectedSkaterCategory,
-                        skaters: .constant(availableDefensemen),
-                        isLoading: isSkaterLoading,
-                        fantasyTeam: fantasyTeam,
-                        statsType: selectedSkaterCategory.lowercased(),
-                        removePlayer: { player in
-                            allAvailableSkaters.removeAll { $0.playerId == player.playerId }
-                        },
-                        onPlayerDrafted: {
-                            startTimer()
-                        },
-                        setLastSelected: { player in
-                            lastSelectedPlayer = player
-                        }, onDraftCompleted: checkDraftCompletion,
-                        onCPUSelection: {
-                            draftForOtherTeams()
-                        },
-                        canDraftPlayer: canDraftPlayer,
-                        onPositionLimitReached: { message in
-                            positionLimitMessage = message
-                            showPositionLimitAlert = true
-                        }
-                    )
+                        SkaterSectionView(
+                            title: "Defensemen",
+                            selectedCategory: $selectedSkaterCategory,
+                            skaters: .constant(availableDefensemen),
+                            isLoading: isSkaterLoading,
+                            fantasyTeam: fantasyTeam,
+                            statsType: selectedSkaterCategory.lowercased(),
+                            removePlayer: { player in
+                                allAvailableSkaters.removeAll { $0.playerId == player.playerId }
+                            },
+                            onPlayerDrafted: {
+                                onHumanPlayerDrafted()
+                            },
+                            setLastSelected: { player in
+                                lastSelectedPlayer = player
+                            },
+                            onDraftCompleted: checkDraftCompletion,
+                            onCPUSelection: {
+                                // This will be handled by the turn system
+                            },
+                            canDraftPlayer: canDraftPlayer,
+                            onPositionLimitReached: { message in
+                                positionLimitMessage = message
+                                showPositionLimitAlert = true
+                            }
+                        )
 
-                    GoalieSectionView(
-                        selectedCategory: $selectedGoalieCategory,
-                        goalies: $allAvailableGoalies,
-                        isLoading: isGoalieLoading,
-                        fantasyTeam: fantasyTeam,
-                        statsType: selectedGoalieCategory.lowercased(),
-                        removePlayer: { player in
-                            allAvailableGoalies.removeAll { $0.playerId == player.playerId }
-                        },
-                        onPlayerDrafted: {
-                            startTimer()
-                        },
-                        setLastSelected: { player in
-                            lastSelectedPlayer = player
-                        }, onDraftCompleted: checkDraftCompletion,
-                        onCPUSelection: {
-                            draftForOtherTeams()
-                        },
-                        canDraftPlayer: canDraftPlayer,
-                        onPositionLimitReached: { message in
-                            positionLimitMessage = message
-                            showPositionLimitAlert = true
+                        GoalieSectionView(
+                            selectedCategory: $selectedGoalieCategory,
+                            goalies: $allAvailableGoalies,
+                            isLoading: isGoalieLoading,
+                            fantasyTeam: fantasyTeam,
+                            statsType: selectedGoalieCategory.lowercased(),
+                            removePlayer: { player in
+                                allAvailableGoalies.removeAll { $0.playerId == player.playerId }
+                            },
+                            onPlayerDrafted: {
+                                onHumanPlayerDrafted()
+                            },
+                            setLastSelected: { player in
+                                lastSelectedPlayer = player
+                            },
+                            onDraftCompleted: checkDraftCompletion,
+                            onCPUSelection: {
+                                // This will be handled by the turn system
+                            },
+                            canDraftPlayer: canDraftPlayer,
+                            onPositionLimitReached: { message in
+                                positionLimitMessage = message
+                                showPositionLimitAlert = true
+                            }
+                        )
+                    } else if !isHumanTurn {
+                        // Show waiting message when it's not human turn
+                        VStack(spacing: 16) {
+                            ProgressView()
+                                .scaleEffect(1.5)
+                            Text("Waiting for other teams to draft...")
+                                .font(.headline)
+                                .foregroundColor(.gray)
                         }
-                    )
+                        .frame(height: 200)
+                    }
                     
                     if !lastCPUSelections.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("CPU Drafted Players:")
+                            Text("Recent CPU Drafts:")
                                 .font(.headline)
                                 .padding(.top)
 
-                            ForEach(lastCPUSelections, id: \.player.playerId) { selection in
+                            ForEach(lastCPUSelections.suffix(5), id: \.player.playerId) { selection in
                                 Text("\(selection.teamName) drafted \(selection.player.firstName.def) \(selection.player.lastName.def)")
                                     .font(.subheadline)
+                                    .foregroundColor(.secondary)
                             }
                         }
                         .padding(.horizontal)
@@ -321,7 +378,7 @@ struct NHLFantasyDraftView: View {
         }
         .onAppear {
             loadInitialData()
-            startTimer()
+            startDraftProcess()
         }
         .onChange(of: selectedSkaterCategory) { newValue in
             statsSkaterType = skaterStatKey(for: newValue)
@@ -332,7 +389,11 @@ struct NHLFantasyDraftView: View {
             statsGoalieType = goalieStatKey(for: newValue)
             isGoalieLoading = true
             decodeAvailableGoalies(season: season, gameType: gameType, statsType: statsGoalieType)
-        }.toolbar {
+        }
+        .onChange(of: currentDraftTurn) { _ in
+            processTurn()
+        }
+        .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: {
                     showBackConfirmation = true
@@ -362,38 +423,159 @@ struct NHLFantasyDraftView: View {
         }
     }
     
-    private func draftForOtherTeams() {
-        for team in fantasyLeague.teams {
-            guard team.id != fantasyTeam.id else { continue }
-
-            let shouldPickSkater = Bool.random(probability: 0.8)
-
-            if shouldPickSkater {
-                // Filter out already drafted players for this specific team
-                let availableSkaters = allAvailableSkaters.filter { !team.hasDrafted($0.playerId) }
-                
-                if let randomSkater = availableSkaters.randomElement() {
-                    team.addPlayer(randomSkater)
-                    // Remove from global available lists
-                    allAvailableSkaters.removeAll { $0.playerId == randomSkater.playerId }
-                    allAvailableGoalies.removeAll { $0.playerId == randomSkater.playerId }
-                    lastCPUPlayer = (team.getName(), randomSkater)
+    // MARK: - Draft Turn Management
+    
+    private func startDraftProcess() {
+        // Start with the human player's turn
+        currentDraftTurn = humanTeamIndex
+        processTurn()
+    }
+    
+    private func processTurn() {
+        print("Processing turn \(currentDraftTurn), team: \(currentTeam.getName()), isHuman: \(isHumanTurn)")
+        
+        // Check if draft is complete first
+        if isDraftComplete() {
+            checkDraftCompletion()
+            return
+        }
+        
+        if isHumanTurn {
+            print("Human turn - starting timer")
+            // Human player's turn - start timer
+            startTimer()
+        } else if !isProcessingCPUTurn {
+            print("CPU turn - processing for \(currentTeam.getName())")
+            // CPU turn - process automatically after a brief delay
+            isProcessingCPUTurn = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                self.draftForCurrentCPUTeam()
+                self.advanceTurn()
+            }
+        }
+    }
+    
+    private func onHumanPlayerDrafted() {
+        print("Human drafted - advancing turn")
+        timer?.invalidate()
+        advanceTurn()
+    }
+    
+    private func advanceTurn() {
+        print("Advancing from turn \(currentDraftTurn)")
+        // Move to next team
+        currentDraftTurn = (currentDraftTurn + 1) % fantasyLeague.teams.count
+        isProcessingCPUTurn = false
+        print("Advanced to turn \(currentDraftTurn)")
+        
+        // Process next turn
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.processTurn()
+        }
+    }
+    
+    private func isDraftComplete() -> Bool {
+        // Check if the user's team has completed the draft requirements
+        let complete = draftComplete
+        print("Draft complete check: \(complete)")
+        return complete
+    }
+    
+    private func draftForCurrentCPUTeam() {
+        let team = currentTeam
+        
+        // Don't draft if this team has already completed their requirements
+        let composition = team.getTeamComposition()
+        let totalSkaters = composition.forwards + composition.defensemen
+        
+        if composition.forwards >= minForwards &&
+           composition.defensemen >= minDefensemen &&
+           composition.goalies >= maxGoalies &&
+           totalSkaters >= maxSkaters {
+            return // This team is done
+        }
+        
+        var shouldPickSkater = true
+        var targetPosition: String = ""
+        
+        // Prioritize based on team needs
+        if composition.goalies < maxGoalies && (totalSkaters >= maxSkaters || composition.goalies == 0) {
+            shouldPickSkater = false
+        } else if composition.forwards < minForwards {
+            targetPosition = "forward"
+        } else if composition.defensemen < minDefensemen {
+            targetPosition = "defense"
+        } else if totalSkaters < maxSkaters {
+            // Random choice between forward and defense, but prefer forwards
+            targetPosition = Bool.random(probability: 0.7) ? "forward" : "defense"
+        } else {
+            shouldPickSkater = false
+        }
+        
+        if shouldPickSkater {
+            var availablePlayers: [NHLPlayerSkaterStats] = []
+            
+            if targetPosition == "forward" {
+                availablePlayers = allAvailableSkaters.filter {
+                    ["F", "C", "L", "R"].contains($0.position) && !team.hasDrafted($0.playerId ?? -1)
+                }
+            } else if targetPosition == "defense" {
+                availablePlayers = allAvailableSkaters.filter {
+                    $0.position == "D" && !team.hasDrafted($0.playerId ?? -1)
                 }
             } else {
-                // Filter out already drafted players for this specific team
-                let availableGoalies = allAvailableGoalies.filter { !team.hasDrafted($0.playerId) }
+                availablePlayers = allAvailableSkaters.filter {
+                    $0.position != "G" && !team.hasDrafted($0.playerId ?? -1)
+                }
+            }
+            
+            // Take top player (they're already sorted by stats)
+            if let selectedPlayer = availablePlayers.first {
+                team.addPlayer(selectedPlayer)
                 
-                if let randomGoalie = availableGoalies.randomElement() {
-                    team.addPlayer(randomGoalie)
-                    // Remove from global available lists
-                    allAvailableSkaters.removeAll { $0.playerId == randomGoalie.playerId }
-                    allAvailableGoalies.removeAll { $0.playerId == randomGoalie.playerId }
-                    lastCPUPlayer = (team.getName(), randomGoalie)
+                // Remove from global available lists
+                allAvailableSkaters.removeAll { $0.playerId == selectedPlayer.playerId }
+                allAvailableGoalies.removeAll { $0.playerId == selectedPlayer.playerId }
+                
+                // Update UI
+                DispatchQueue.main.async {
+                    self.lastCPUPlayer = (team.getName(), selectedPlayer)
+                    self.lastCPUSelections.append((team.getName(), selectedPlayer))
+                    
+                    // Keep only last 10 selections to prevent memory bloat
+                    if self.lastCPUSelections.count > 10 {
+                        self.lastCPUSelections.removeFirst()
+                    }
+                }
+            }
+        } else {
+            // Draft a goalie
+            let availableGoalies = allAvailableGoalies.filter { !team.hasDrafted($0.playerId ?? -1) }
+            
+            // Take top goalie (they're already sorted by stats)
+            if let selectedGoalie = availableGoalies.first {
+                team.addPlayer(selectedGoalie)
+                
+                // Remove from global available lists
+                allAvailableSkaters.removeAll { $0.playerId == selectedGoalie.playerId }
+                allAvailableGoalies.removeAll { $0.playerId == selectedGoalie.playerId }
+                
+                // Update UI
+                DispatchQueue.main.async {
+                    self.lastCPUPlayer = (team.getName(), selectedGoalie)
+                    self.lastCPUSelections.append((team.getName(), selectedGoalie))
+                    
+                    // Keep only last 10 selections
+                    if self.lastCPUSelections.count > 10 {
+                        self.lastCPUSelections.removeFirst()
+                    }
                 }
             }
         }
     }
 
+    // MARK: - Existing Methods (API calls, etc.)
+    
     private func decodeAvailableSkaters(season: String, gameType: Int, statsType: String) {
         guard let url = NHLResource.skaterStatsLeadersURL(season: season, gameType: gameType, statsType: statsType) else {
             print("Cannot create available skaters stats URL for \(season)")
@@ -419,20 +601,18 @@ struct NHLFantasyDraftView: View {
                 DispatchQueue.main.async {
                     availableSkaters = result
                     let apiSkaters = getSkatersList(from: result, for: statsSkaterType)
-                    // Convert API stats to internal model
                     let convertedSkaters = apiSkaters.map { $0.toNHLPlayerSkaterStats() }
                     
                     // Filter out players drafted by ANY team in the league
                     allAvailableSkaters = convertedSkaters.filter { player in
                         !fantasyLeague.teams.contains { team in
-                            team.hasDrafted(player.playerId)
+                            team.hasDrafted(player.playerId ?? -1)
                         }
                     }
                     isSkaterLoading = false
                 }
             } catch {
                 print("Error decoding skaters: \(error)")
-                // Debug output
                 if let jsonString = String(data: data, encoding: .utf8) {
                     print("Raw JSON response: \(jsonString.prefix(1000))")
                 }
@@ -465,20 +645,18 @@ struct NHLFantasyDraftView: View {
                 DispatchQueue.main.async {
                     availableGoalies = result
                     let apiGoalies = getGoalieList(from: result, for: statsGoalieType)
-                    // Convert API stats to internal model
                     let convertedGoalies = apiGoalies.map { $0.toNHLPlayerSkaterStats() }
                     
                     // Filter out players drafted by ANY team in the league
                     allAvailableGoalies = convertedGoalies.filter { player in
                         !fantasyLeague.teams.contains { team in
-                            team.hasDrafted(player.playerId)
+                            team.hasDrafted(player.playerId ?? -1)
                         }
                     }
                     isGoalieLoading = false
                 }
             } catch {
                 print("Error decoding goalies: \(error)")
-                // Debug output
                 if let jsonString = String(data: data, encoding: .utf8) {
                     print("Raw JSON response: \(jsonString.prefix(1000))")
                 }
@@ -536,7 +714,7 @@ struct NHLFantasyDraftView: View {
             } else {
                 timer?.invalidate()
                 autoDraftPlayer()
-                startTimer()
+                advanceTurn()
             }
         }
     }
@@ -546,9 +724,11 @@ struct NHLFantasyDraftView: View {
         if shouldPickSkater, let skater = allAvailableSkaters.first {
             fantasyTeam.addPlayer(skater)
             allAvailableSkaters.removeAll { $0.playerId == skater.playerId }
+            lastSelectedPlayer = skater
         } else if let goalie = allAvailableGoalies.first {
             fantasyTeam.addPlayer(goalie)
             allAvailableGoalies.removeAll { $0.playerId == goalie.playerId }
+            lastSelectedPlayer = goalie
         }
     }
     
@@ -588,7 +768,6 @@ struct PlayerRow: View {
                 onPlayerSelected()
                 setLastSelected(player)
                 onAfterSelection()
-                onCPUSelection()
                 onDraftCompleted()
             } else {
                 let message = getPositionLimitMessage(player)
