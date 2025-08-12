@@ -13,6 +13,8 @@ struct NHLRosterView: View {
     @State private var isLoading: Bool = true
     @State private var seasonId: String = "20242025"
     @State private var showingStats = false
+    @State private var playerDetails: [Int: NHLPlayer] = [:] // Cache for player details
+    @State private var hotStreakPlayers: Set<Int> = [] // Cache for hot streak status
     private let teamId: String
     
     public init (teamIdentifier: String) {
@@ -140,6 +142,8 @@ struct NHLRosterView: View {
                 Button(action: {
                     seasonId = season
                     isLoading = true
+                    playerDetails.removeAll() // Clear cache when changing seasons
+                    hotStreakPlayers.removeAll() // Clear hot streak cache
                     decodeRoster(teamId: teamId, seasonId: seasonId)
                     decodeProspects(teamId: teamId)
                 }) {
@@ -212,34 +216,47 @@ struct NHLRosterView: View {
     // MARK: - Player Row Component
     struct PlayerRow: View {
         let player: NHLPerson
+        let playerInfo: NHLPlayer?
         let description: String
+        let isOnHotStreak: Bool
         
         var body: some View {
             HStack(spacing: 16) {
-                // Player headshot
-                AsyncImage(url: URL(string: player.headshot)) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 60, height: 60)
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle()
-                                .stroke(Color(.systemGray4), lineWidth: 1)
-                        )
-                } placeholder: {
-                    Circle()
-                        .fill(LinearGradient(
-                            gradient: Gradient(colors: [Color(.systemGray5), Color(.systemGray4)]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ))
-                        .frame(width: 60, height: 60)
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(.secondary)
-                        )
+                // Player headshot with hot streak indicator
+                ZStack(alignment: .topTrailing) {
+                    AsyncImage(url: URL(string: player.headshot)) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 60, height: 60)
+                            .clipShape(Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(Color(.systemGray4), lineWidth: 1)
+                            )
+                    } placeholder: {
+                        Circle()
+                            .fill(LinearGradient(
+                                gradient: Gradient(colors: [Color(.systemGray5), Color(.systemGray4)]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ))
+                            .frame(width: 60, height: 60)
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.secondary)
+                            )
+                    }
+                    
+                    // Hot streak fire indicator
+                    if isOnHotStreak {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.orange)
+                            .background(Circle().fill(Color.white).frame(width: 20, height: 20))
+                            .offset(x: 5, y: -5)
+                    }
                 }
                 
                 // Player info
@@ -313,9 +330,20 @@ struct NHLRosterView: View {
                 LazyVStack(spacing: 8) {
                     ForEach(players, id: \.id) { player in
                         NavigationLink(destination: NHLPlayerView(playerId: player.id)) {
-                            PlayerRow(player: player, description: playerShortDescription(from: player))
+                            PlayerRow(
+                                player: player,
+                                playerInfo: playerDetails[player.id],
+                                description: playerShortDescription(from: player),
+                                isOnHotStreak: hotStreakPlayers.contains(player.id)
+                            )
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .onAppear {
+                            // Load player details if not already cached
+                            if playerDetails[player.id] == nil {
+                                loadPlayerDetails(for: player.id)
+                            }
+                        }
                     }
                 }
             }
@@ -389,6 +417,65 @@ struct NHLRosterView: View {
         dataTask.resume()
     }
     
+    // Updated function to load player details and cache them
+    func loadPlayerDetails(for playerId: Int) {
+        // Avoid loading if already in progress or cached
+        guard playerDetails[playerId] == nil else { return }
+        
+        returnNHLPlayer(playerId: playerId) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let player):
+                    playerDetails[playerId] = player
+                    // Determine hot streak status based on position
+                    let isOnHotStreak: Bool
+                    if player.position == "G" {
+                        isOnHotStreak = isGoalieOnHotStreak(player.last5Games)
+                    } else {
+                        isOnHotStreak = isSkaterOnHotStreak(player.last5Games)
+                    }
+                    
+                    if isOnHotStreak {
+                        hotStreakPlayers.insert(playerId)
+                    }
+                case .failure(let error):
+                    print("Failed to load player details for \(playerId): \(error)")
+                    // Set a default player to avoid repeated attempts
+                    playerDetails[playerId] = NHLResource.defaultNHLPlayer()
+                }
+            }
+        }
+    }
+    
+    func returnNHLPlayer(playerId: Int, completion: @escaping (Result<NHLPlayer, Error>) -> Void) {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        
+        guard let url = NHLResource.basePlayerLandingURL(for: playerId) else {
+            completion(.success(NHLResource.defaultNHLPlayer()))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(NSError(domain: "DataError", code: 0, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
+                return
+            }
+            
+            do {
+                let player = try decoder.decode(NHLPlayer.self, from: data)
+                completion(.success(player))
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+    
     // MARK: - Helper Functions
     func formattedSeason(_ seasonId: String) -> String {
         let start = seasonId.prefix(4)
@@ -403,20 +490,20 @@ struct NHLRosterView: View {
         var currentRosterPlayerIds = Set<String>()
         
         if let forwards = players?.forwards {
-                    for player in forwards {
-                        currentRosterPlayerIds.insert("\(player.id)")
-                    }
-                }
-                if let defensemen = players?.defensemen {
-                    for player in defensemen {
-                        currentRosterPlayerIds.insert("\(player.id)")
-                    }
-                }
-                if let goalies = players?.goalies {
-                    for player in goalies {
-                        currentRosterPlayerIds.insert("\(player.id)")
-                    }
-                }
+            for player in forwards {
+                currentRosterPlayerIds.insert("\(player.id)")
+            }
+        }
+        if let defensemen = players?.defensemen {
+            for player in defensemen {
+                currentRosterPlayerIds.insert("\(player.id)")
+            }
+        }
+        if let goalies = players?.goalies {
+            for player in goalies {
+                currentRosterPlayerIds.insert("\(player.id)")
+            }
+        }
                 
         // Filter out prospects who are already in the current roster
         let filteredProspects = prospectPlayers.filter { prospect in
@@ -450,6 +537,43 @@ struct NHLRosterView: View {
     
     func getHeight(from heightInInches: Int) -> String {
         return "\(heightInInches / 12)' \(heightInInches % 12)\""
+    }
+    
+    // MARK: - Hot Streak Detection (copied from TopPlayersView)
+    private func isSkaterOnHotStreak(_ last5Games: [NHLGameDetail]) -> Bool {
+        guard !last5Games.isEmpty else { return false }
+        
+        let totalGoals = last5Games.compactMap { $0.goals }.reduce(0, +)
+        let totalAssists = last5Games.compactMap { $0.assists }.reduce(0, +)
+        let totalPoints = last5Games.compactMap { $0.points }.reduce(0, +)
+        
+        // Hot streak criteria for skaters:
+        // 1. 1.5 times more points than games played (1.5 PPG over 5 games = 7.5+ points)
+        // 2. 4 or more goals in last 5 games
+        // 3. 6 or more assists in last 5 games
+        let pointsThreshold = Int(1.5 * Double(last5Games.count))
+        
+        return totalPoints >= pointsThreshold || totalGoals >= 4 || totalAssists >= 6
+    }
+    
+    private func isGoalieOnHotStreak(_ last5Games: [NHLGameDetail]) -> Bool {
+        guard !last5Games.isEmpty else { return false }
+        
+        let gamesWithSavePct = last5Games.compactMap { $0.savePctg }
+        let gamesWithGAA = last5Games.compactMap { $0.goalsAgainst }
+        let wins = last5Games.filter { $0.decision == "W" }.count
+        
+        // Calculate average save percentage
+        let avgSavePct = gamesWithSavePct.isEmpty ? 0.0 : gamesWithSavePct.reduce(0, +) / Double(gamesWithSavePct.count)
+        
+        // Calculate average goals against (GAA approximation)
+        let avgGoalsAgainst = gamesWithGAA.isEmpty ? 0.0 : Double(gamesWithGAA.reduce(0, +)) / Double(gamesWithGAA.count)
+        
+        // Hot streak criteria for goalies:
+        // 1. Average save percentage > 0.925 over last 5 games
+        // 2. Average goals against < 1.75 over last 5 games
+        // 3. Won all 5 games
+        return avgSavePct > 0.925 || avgGoalsAgainst < 1.75 || wins == 5
     }
     
     struct NHLRosterView_Previews: PreviewProvider {

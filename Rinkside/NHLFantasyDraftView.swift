@@ -17,8 +17,8 @@ struct NHLFantasyDraftView: View {
     @State private var timeRemaining = 60
     @State private var timer: Timer? = nil
 
-    @State private var availableSkaters: NHLPlayerSkaterStatsLeaders?
-    @State private var availableGoalies: NHLPlayerGoalieStatsLeaders?
+    @State private var availableSkaters: NHLStatsLeadersAPIResponse?
+    @State private var availableGoalies: NHLGoalieStatsLeadersAPIResponse?
     @State private var isSkaterLoading: Bool = true
     @State private var isGoalieLoading: Bool = true
     @State private var selectedSkaterCategory: String = "Goals"
@@ -32,11 +32,29 @@ struct NHLFantasyDraftView: View {
     @State private var lastSelectedPlayer: NHLPlayerSkaterStats? = nil
     @State private var lastCPUSelections: [(teamName: String, player: NHLPlayerSkaterStats)] = []
     @State private var lastCPUPlayer: (teamName: String, player: NHLPlayerSkaterStats)? = nil
-
-
+    
+    @State private var showPositionLimitAlert = false
+    @State private var positionLimitMessage = ""
 
     private var fantasyTeam: NHLFantasyTeam
     private var fantasyLeague: NHLFantasyTeamLeague
+    
+    // Draft limits
+    private let maxSkaters = 23
+    private let minForwards = 12
+    private let minDefensemen = 6
+    private let maxGoalies = 3
+    
+    // Calculated maximums based on team size constraints
+    private var maxForwards: Int {
+        // Max forwards = total skaters - minimum defensemen required
+        return maxSkaters - minDefensemen // 23 - 6 = 17
+    }
+    
+    private var maxDefensemen: Int {
+        // Max defensemen = total skaters - minimum forwards required
+        return maxSkaters - minForwards // 23 - 12 = 11
+    }
     
     private var forwardsCount: Int {
         fantasyTeam.draftedPlayers.filter {
@@ -44,7 +62,6 @@ struct NHLFantasyDraftView: View {
         }.count
     }
     
-
     private var defensemenCount: Int {
         fantasyTeam.draftedPlayers.filter { $0.position == "D" }.count
     }
@@ -58,10 +75,42 @@ struct NHLFantasyDraftView: View {
     }
 
     private var draftComplete: Bool {
-        skatersCount >= 23 &&
-        forwardsCount >= 12 &&
-        defensemenCount >= 6 &&
-        goaliesCount >= 3
+        skatersCount >= maxSkaters &&
+        forwardsCount >= minForwards &&
+        defensemenCount >= minDefensemen &&
+        goaliesCount >= maxGoalies
+    }
+    
+    // Helper function to check if a player can be drafted
+    private func canDraftPlayer(_ player: NHLPlayerSkaterStats) -> Bool {
+        if player.position == "G" {
+            return goaliesCount < maxGoalies
+        } else if player.position == "D" {
+            return defensemenCount < maxDefensemen && skatersCount < maxSkaters
+        } else if ["F", "C", "L", "R"].contains(player.position) {
+            return forwardsCount < maxForwards && skatersCount < maxSkaters
+        }
+        return false
+    }
+    
+    // Helper function to get position limit message
+    private func getPositionLimitMessage(for player: NHLPlayerSkaterStats) -> String {
+        if player.position == "G" {
+            return "You've reached the maximum number of goalies (\(maxGoalies)). You cannot draft any more goalies."
+        } else if player.position == "D" {
+            if defensemenCount >= maxDefensemen {
+                return "You've reached the maximum number of defensemen (\(maxDefensemen)). You cannot draft any more defensemen."
+            } else if skatersCount >= maxSkaters {
+                return "You've reached the maximum number of skaters (\(maxSkaters)). You cannot draft any more skaters."
+            }
+        } else if ["F", "C", "L", "R"].contains(player.position) {
+            if forwardsCount >= maxForwards {
+                return "You've reached the maximum number of forwards (\(maxForwards)). You cannot draft any more forwards."
+            } else if skatersCount >= maxSkaters {
+                return "You've reached the maximum number of skaters (\(maxSkaters)). You cannot draft any more skaters."
+            }
+        }
+        return "You cannot draft this player."
     }
     
     private var availableForwards: [NHLPlayerSkaterStats] {
@@ -94,7 +143,7 @@ struct NHLFantasyDraftView: View {
                         .padding()
                     
                     VStack(spacing: 10) {
-                        Text("Skaters: \(skatersCount) | Forwards: \(forwardsCount) | Defense: \(defensemenCount) | Goalies: \(goaliesCount)")
+                        Text("Skaters: \(skatersCount)/\(maxSkaters) | Forwards: \(forwardsCount)/\(maxForwards) | Defense: \(defensemenCount)/\(maxDefensemen) | Goalies: \(goaliesCount)/\(maxGoalies)")
                             .font(.subheadline)
                             .padding(.bottom, 5)
                             .foregroundColor(.blue)
@@ -112,7 +161,6 @@ struct NHLFantasyDraftView: View {
                         }
                     }
 
-                    
                     if let last = lastSelectedPlayer {
                         HStack {
                             if let url = URL(string: last.headshot) {
@@ -175,7 +223,6 @@ struct NHLFantasyDraftView: View {
                         .padding(.horizontal)
                     }
 
-
                     SkaterSectionView(
                         title: "Forwards",
                         selectedCategory: $selectedSkaterCategory,
@@ -194,6 +241,11 @@ struct NHLFantasyDraftView: View {
                         }, onDraftCompleted: checkDraftCompletion,
                         onCPUSelection: {
                             draftForOtherTeams()
+                        },
+                        canDraftPlayer: canDraftPlayer,
+                        onPositionLimitReached: { message in
+                            positionLimitMessage = message
+                            showPositionLimitAlert = true
                         }
                     )
 
@@ -215,9 +267,13 @@ struct NHLFantasyDraftView: View {
                         }, onDraftCompleted: checkDraftCompletion,
                         onCPUSelection: {
                             draftForOtherTeams()
+                        },
+                        canDraftPlayer: canDraftPlayer,
+                        onPositionLimitReached: { message in
+                            positionLimitMessage = message
+                            showPositionLimitAlert = true
                         }
                     )
-
 
                     GoalieSectionView(
                         selectedCategory: $selectedGoalieCategory,
@@ -236,6 +292,11 @@ struct NHLFantasyDraftView: View {
                         }, onDraftCompleted: checkDraftCompletion,
                         onCPUSelection: {
                             draftForOtherTeams()
+                        },
+                        canDraftPlayer: canDraftPlayer,
+                        onPositionLimitReached: { message in
+                            positionLimitMessage = message
+                            showPositionLimitAlert = true
                         }
                     )
                     
@@ -252,8 +313,6 @@ struct NHLFantasyDraftView: View {
                         }
                         .padding(.horizontal)
                     }
-
-
                 }
                 .padding()
             }
@@ -296,6 +355,11 @@ struct NHLFantasyDraftView: View {
                 secondaryButton: .cancel()
             )
         }
+        .alert("Position Limit Reached", isPresented: $showPositionLimitAlert) {
+            Button("OK") { }
+        } message: {
+            Text(positionLimitMessage)
+        }
     }
     
     private func draftForOtherTeams() {
@@ -330,8 +394,6 @@ struct NHLFantasyDraftView: View {
         }
     }
 
-
-
     private func decodeAvailableSkaters(season: String, gameType: Int, statsType: String) {
         guard let url = NHLResource.skaterStatsLeadersURL(season: season, gameType: gameType, statsType: statsType) else {
             print("Cannot create available skaters stats URL for \(season)")
@@ -353,13 +415,15 @@ struct NHLFantasyDraftView: View {
             }
 
             do {
-                let result = try decoder.decode(NHLPlayerSkaterStatsLeaders.self, from: data)
+                let result = try decoder.decode(NHLStatsLeadersAPIResponse.self, from: data)
                 DispatchQueue.main.async {
                     availableSkaters = result
-                    let allSkaters = getSkatersList(from: result, for: statsSkaterType)
+                    let apiSkaters = getSkatersList(from: result, for: statsSkaterType)
+                    // Convert API stats to internal model
+                    let convertedSkaters = apiSkaters.map { $0.toNHLPlayerSkaterStats() }
                     
                     // Filter out players drafted by ANY team in the league
-                    allAvailableSkaters = allSkaters.filter { player in
+                    allAvailableSkaters = convertedSkaters.filter { player in
                         !fantasyLeague.teams.contains { team in
                             team.hasDrafted(player.playerId)
                         }
@@ -367,7 +431,11 @@ struct NHLFantasyDraftView: View {
                     isSkaterLoading = false
                 }
             } catch {
-                print(error)
+                print("Error decoding skaters: \(error)")
+                // Debug output
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("Raw JSON response: \(jsonString.prefix(1000))")
+                }
             }
         }.resume()
     }
@@ -393,13 +461,15 @@ struct NHLFantasyDraftView: View {
             }
 
             do {
-                let result = try decoder.decode(NHLPlayerGoalieStatsLeaders.self, from: data)
+                let result = try decoder.decode(NHLGoalieStatsLeadersAPIResponse.self, from: data)
                 DispatchQueue.main.async {
                     availableGoalies = result
-                    let allGoalies = getGoalieList(from: result, for: statsGoalieType)
+                    let apiGoalies = getGoalieList(from: result, for: statsGoalieType)
+                    // Convert API stats to internal model
+                    let convertedGoalies = apiGoalies.map { $0.toNHLPlayerSkaterStats() }
                     
                     // Filter out players drafted by ANY team in the league
-                    allAvailableGoalies = allGoalies.filter { player in
+                    allAvailableGoalies = convertedGoalies.filter { player in
                         !fantasyLeague.teams.contains { team in
                             team.hasDrafted(player.playerId)
                         }
@@ -407,12 +477,16 @@ struct NHLFantasyDraftView: View {
                     isGoalieLoading = false
                 }
             } catch {
-                print(error)
+                print("Error decoding goalies: \(error)")
+                // Debug output
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("Raw JSON response: \(jsonString.prefix(1000))")
+                }
             }
         }.resume()
     }
 
-    private func getSkatersList(from stats: NHLPlayerSkaterStatsLeaders, for type: String) -> [NHLPlayerSkaterStats] {
+    private func getSkatersList(from stats: NHLStatsLeadersAPIResponse, for type: String) -> [NHLPlayerAPIStats] {
         switch type {
         case "goals": return stats.goals ?? []
         case "assists": return stats.assists ?? []
@@ -421,7 +495,7 @@ struct NHLFantasyDraftView: View {
         }
     }
 
-    private func getGoalieList(from stats: NHLPlayerGoalieStatsLeaders, for type: String) -> [NHLPlayerSkaterStats] {
+    private func getGoalieList(from stats: NHLGoalieStatsLeadersAPIResponse, for type: String) -> [NHLPlayerAPIStats] {
         switch type {
         case "wins": return stats.wins ?? []
         case "savePctg": return stats.savePctg ?? []
@@ -486,7 +560,6 @@ struct NHLFantasyDraftView: View {
             }
         }
     }
-
 }
 
 // MARK: - Supporting Views
@@ -500,6 +573,9 @@ struct PlayerRow: View {
     let onDraftCompleted: () -> Void
     let onCPUSelection: () -> Void
     let setLastSelected: (NHLPlayerSkaterStats) -> Void
+    let canDraftPlayer: (NHLPlayerSkaterStats) -> Bool
+    let onPositionLimitReached: (String) -> Void
+    let getPositionLimitMessage: (NHLPlayerSkaterStats) -> String
 
     var trimmedString: String {
         String(format: "%g", player.value)
@@ -507,12 +583,17 @@ struct PlayerRow: View {
 
     var body: some View {
         Button(action: {
-            fantasyTeam.addPlayer(player)
-            onPlayerSelected()
-            setLastSelected(player)
-            onAfterSelection()
-            onCPUSelection()
-            onDraftCompleted()
+            if canDraftPlayer(player) {
+                fantasyTeam.addPlayer(player)
+                onPlayerSelected()
+                setLastSelected(player)
+                onAfterSelection()
+                onCPUSelection()
+                onDraftCompleted()
+            } else {
+                let message = getPositionLimitMessage(player)
+                onPositionLimitReached(message)
+            }
         }) {
             HStack {
                 Text("\(player.firstName.def) \(player.lastName.def)")
@@ -526,8 +607,6 @@ struct PlayerRow: View {
     }
 }
 
-
-
 struct SkaterSectionView: View {
     let title: String
     @Binding var selectedCategory: String
@@ -540,6 +619,8 @@ struct SkaterSectionView: View {
     let setLastSelected: (NHLPlayerSkaterStats) -> Void
     let onDraftCompleted: () -> Void
     let onCPUSelection: () -> Void
+    let canDraftPlayer: (NHLPlayerSkaterStats) -> Bool
+    let onPositionLimitReached: (String) -> Void
 
     var body: some View {
         Section(header: Text("\(title)")) {
@@ -570,8 +651,27 @@ struct SkaterSectionView: View {
                         },
                         setLastSelected: { player in
                             setLastSelected(player)
+                        },
+                        canDraftPlayer: canDraftPlayer,
+                        onPositionLimitReached: onPositionLimitReached,
+                        getPositionLimitMessage: { player in
+                            if player.position == "D" {
+                                if fantasyTeam.draftedPlayers.filter({ $0.position == "D" }).count >= 11 {
+                                    return "You've reached the maximum number of defensemen (11). You cannot draft any more defensemen."
+                                } else if fantasyTeam.draftedPlayers.filter({ $0.position != "G" }).count >= 23 {
+                                    return "You've reached the maximum number of skaters (23). You cannot draft any more skaters."
+                                }
+                            } else if ["F", "C", "L", "R"].contains(player.position) {
+                                if fantasyTeam.draftedPlayers.filter({ ["F", "C", "L", "R"].contains($0.position) }).count >= 17 {
+                                    return "You've reached the maximum number of forwards (17). You cannot draft any more forwards."
+                                } else if fantasyTeam.draftedPlayers.filter({ $0.position != "G" }).count >= 23 {
+                                    return "You've reached the maximum number of skaters (23). You cannot draft any more skaters."
+                                }
+                            }
+                            return "You cannot draft this player."
                         }
-                    )                }
+                    )
+                }
                 .frame(height: 300)
             }
         }
@@ -589,6 +689,8 @@ struct GoalieSectionView: View {
     let setLastSelected: (NHLPlayerSkaterStats) -> Void
     let onDraftCompleted: () -> Void
     let onCPUSelection: () -> Void
+    let canDraftPlayer: (NHLPlayerSkaterStats) -> Bool
+    let onPositionLimitReached: (String) -> Void
 
     var body: some View {
         Section(header: Text("Goalies")) {
@@ -619,6 +721,14 @@ struct GoalieSectionView: View {
                         },
                         setLastSelected: {_ in
                             setLastSelected(player)
+                        },
+                        canDraftPlayer: canDraftPlayer,
+                        onPositionLimitReached: onPositionLimitReached,
+                        getPositionLimitMessage: { player in
+                            if player.position == "G" {
+                                return "You've reached the maximum number of goalies (3). You cannot draft any more goalies."
+                            }
+                            return "You cannot draft this player."
                         }
                     )
                 }
@@ -633,4 +743,3 @@ extension Bool {
         return Double.random(in: 0..<1) < probability
     }
 }
-
