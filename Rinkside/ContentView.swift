@@ -117,6 +117,15 @@ struct ContentView: View {
                                 gradientColors: [.purple, .pink],
                                 delay: 0.4
                             )
+                            
+                            NavigationMenuButton(
+                                destination: NHLOtherSeasonsView(),
+                                icon: "globe.americas.fill",
+                                title: "Other Seasons",
+                                subtitle: "International & development leagues",
+                                gradientColors: [.teal, .blue],
+                                delay: 0.5
+                            )
                         }
                         .opacity(animateButtons ? 1.0 : 0.0)
                         .offset(y: animateButtons ? 0 : 20)

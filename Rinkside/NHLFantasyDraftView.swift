@@ -425,17 +425,139 @@ struct NHLFantasyDraftView: View {
     
     // MARK: - Draft Turn Management
     
-    private func startDraftProcess() {
-        // Start with the human player's turn
-        currentDraftTurn = humanTeamIndex
-        processTurn()
+    
+    
+    private func onHumanPlayerDrafted() {
+        print("Human drafted - advancing turn")
+        timer?.invalidate()
+        advanceTurn()
     }
     
+    
+    private func isDraftComplete() -> Bool {
+        // Check if the user's team has completed the draft requirements
+        let complete = draftComplete
+        print("Draft complete check: \(complete)")
+        return complete
+    }
+    
+    private func draftSinglePlayerForCPU() {
+        let team = currentTeam
+        print("CPU team \(team.getName()) attempting to draft a player")
+        
+        // Get current team composition to make intelligent picks
+        let composition = team.getTeamComposition()
+        let totalSkaters = composition.forwards + composition.defensemen
+        
+        // Determine what type of player to draft based on team needs
+        var shouldPickGoalie = false
+        var preferredPosition = ""
+        
+        // Priority logic for drafting
+        if composition.goalies == 0 {
+            // Must have at least one goalie
+            shouldPickGoalie = true
+        } else if composition.forwards < minForwards {
+            // Need more forwards
+            preferredPosition = "forward"
+        } else if composition.defensemen < minDefensemen {
+            // Need more defensemen
+            preferredPosition = "defense"
+        } else if composition.goalies < maxGoalies && totalSkaters >= maxSkaters {
+            // Fill remaining goalie spots if skater positions are full
+            shouldPickGoalie = true
+        } else if totalSkaters < maxSkaters {
+            // Random choice between available positions
+            if composition.forwards < maxForwards && composition.defensemen < maxDefensemen {
+                preferredPosition = Bool.random(probability: 0.6) ? "forward" : "defense"
+            } else if composition.forwards < maxForwards {
+                preferredPosition = "forward"
+            } else if composition.defensemen < maxDefensemen {
+                preferredPosition = "defense"
+            }
+        } else if composition.goalies < maxGoalies {
+            // Only goalie spots left
+            shouldPickGoalie = true
+        } else {
+            print("Team \(team.getName()) appears to be full - skipping")
+            return
+        }
+        
+        var selectedPlayer: NHLPlayerSkaterStats? = nil
+        
+        if shouldPickGoalie {
+            // Draft a goalie
+            let availableGoalies = allAvailableGoalies.filter { player in
+                !fantasyLeague.teams.contains { team in
+                    team.hasDrafted(player.playerId ?? -1)
+                }
+            }
+            
+            selectedPlayer = availableGoalies.first
+            print("CPU team \(team.getName()) looking for goalie, found: \(selectedPlayer?.firstName.def ?? "none") \(selectedPlayer?.lastName.def ?? "")")
+        } else {
+            // Draft a skater
+            var availablePlayers: [NHLPlayerSkaterStats] = []
+            
+            if preferredPosition == "forward" {
+                availablePlayers = allAvailableSkaters.filter { player in
+                    ["F", "C", "L", "R"].contains(player.position) &&
+                    !fantasyLeague.teams.contains { team in
+                        team.hasDrafted(player.playerId ?? -1)
+                    }
+                }
+            } else if preferredPosition == "defense" {
+                availablePlayers = allAvailableSkaters.filter { player in
+                    player.position == "D" &&
+                    !fantasyLeague.teams.contains { team in
+                        team.hasDrafted(player.playerId ?? -1)
+                    }
+                }
+            } else {
+                // Any skater
+                availablePlayers = allAvailableSkaters.filter { player in
+                    player.position != "G" &&
+                    !fantasyLeague.teams.contains { team in
+                        team.hasDrafted(player.playerId ?? -1)
+                    }
+                }
+            }
+            
+            selectedPlayer = availablePlayers.first
+            print("CPU team \(team.getName()) looking for \(preferredPosition), found: \(selectedPlayer?.firstName.def ?? "none") \(selectedPlayer?.lastName.def ?? "")")
+        }
+        
+        // Draft the selected player
+        if let player = selectedPlayer {
+            team.addPlayer(player)
+            print("Team \(team.getName()) successfully drafted \(player.firstName.def) \(player.lastName.def) (\(player.position))")
+            
+            // Remove from available lists
+            allAvailableSkaters.removeAll { $0.playerId == player.playerId }
+            allAvailableGoalies.removeAll { $0.playerId == player.playerId }
+            
+            // Update UI
+            DispatchQueue.main.async {
+                self.lastCPUPlayer = (team.getName(), player)
+                self.lastCPUSelections.append((team.getName(), player))
+                
+                // Keep only last 10 selections
+                if self.lastCPUSelections.count > 10 {
+                    self.lastCPUSelections.removeFirst()
+                }
+            }
+        } else {
+            print("No available players for team \(team.getName()) to draft")
+        }
+    }
+
+    // Also update the processTurn method to handle completed teams better:
     private func processTurn() {
         print("Processing turn \(currentDraftTurn), team: \(currentTeam.getName()), isHuman: \(isHumanTurn)")
         
-        // Check if draft is complete first
-        if isDraftComplete() {
+        // Check if the human player has completed their draft (main completion condition)
+        if isHumanTurn && isDraftComplete() {
+            print("Human player draft complete!")
             checkDraftCompletion()
             return
         }
@@ -449,130 +571,39 @@ struct NHLFantasyDraftView: View {
             // CPU turn - process automatically after a brief delay
             isProcessingCPUTurn = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                self.draftForCurrentCPUTeam()
+                self.draftSinglePlayerForCPU()
                 self.advanceTurn()
             }
         }
     }
-    
-    private func onHumanPlayerDrafted() {
-        print("Human drafted - advancing turn")
-        timer?.invalidate()
-        advanceTurn()
+
+    // Update the startDraftProcess method:
+    private func startDraftProcess() {
+        // Reset turn counter and start from 0 (first team)
+        currentDraftTurn = 0
+        print("Starting draft process with turn \(currentDraftTurn)")
+        processTurn()
     }
-    
+
+    // Fix the advanceTurn method with better logging:
     private func advanceTurn() {
-        print("Advancing from turn \(currentDraftTurn)")
+        let oldTurn = currentDraftTurn
+        let oldTeam = currentTeam.getName()
+        
         // Move to next team
         currentDraftTurn = (currentDraftTurn + 1) % fantasyLeague.teams.count
         isProcessingCPUTurn = false
-        print("Advanced to turn \(currentDraftTurn)")
+        
+        let newTeam = currentTeam.getName()
+        print("Advanced from turn \(oldTurn) (\(oldTeam)) to turn \(currentDraftTurn) (\(newTeam))")
         
         // Process next turn
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.processTurn()
         }
     }
+
     
-    private func isDraftComplete() -> Bool {
-        // Check if the user's team has completed the draft requirements
-        let complete = draftComplete
-        print("Draft complete check: \(complete)")
-        return complete
-    }
-    
-    private func draftForCurrentCPUTeam() {
-        let team = currentTeam
-        
-        // Don't draft if this team has already completed their requirements
-        let composition = team.getTeamComposition()
-        let totalSkaters = composition.forwards + composition.defensemen
-        
-        if composition.forwards >= minForwards &&
-           composition.defensemen >= minDefensemen &&
-           composition.goalies >= maxGoalies &&
-           totalSkaters >= maxSkaters {
-            return // This team is done
-        }
-        
-        var shouldPickSkater = true
-        var targetPosition: String = ""
-        
-        // Prioritize based on team needs
-        if composition.goalies < maxGoalies && (totalSkaters >= maxSkaters || composition.goalies == 0) {
-            shouldPickSkater = false
-        } else if composition.forwards < minForwards {
-            targetPosition = "forward"
-        } else if composition.defensemen < minDefensemen {
-            targetPosition = "defense"
-        } else if totalSkaters < maxSkaters {
-            // Random choice between forward and defense, but prefer forwards
-            targetPosition = Bool.random(probability: 0.7) ? "forward" : "defense"
-        } else {
-            shouldPickSkater = false
-        }
-        
-        if shouldPickSkater {
-            var availablePlayers: [NHLPlayerSkaterStats] = []
-            
-            if targetPosition == "forward" {
-                availablePlayers = allAvailableSkaters.filter {
-                    ["F", "C", "L", "R"].contains($0.position) && !team.hasDrafted($0.playerId ?? -1)
-                }
-            } else if targetPosition == "defense" {
-                availablePlayers = allAvailableSkaters.filter {
-                    $0.position == "D" && !team.hasDrafted($0.playerId ?? -1)
-                }
-            } else {
-                availablePlayers = allAvailableSkaters.filter {
-                    $0.position != "G" && !team.hasDrafted($0.playerId ?? -1)
-                }
-            }
-            
-            // Take top player (they're already sorted by stats)
-            if let selectedPlayer = availablePlayers.first {
-                team.addPlayer(selectedPlayer)
-                
-                // Remove from global available lists
-                allAvailableSkaters.removeAll { $0.playerId == selectedPlayer.playerId }
-                allAvailableGoalies.removeAll { $0.playerId == selectedPlayer.playerId }
-                
-                // Update UI
-                DispatchQueue.main.async {
-                    self.lastCPUPlayer = (team.getName(), selectedPlayer)
-                    self.lastCPUSelections.append((team.getName(), selectedPlayer))
-                    
-                    // Keep only last 10 selections to prevent memory bloat
-                    if self.lastCPUSelections.count > 10 {
-                        self.lastCPUSelections.removeFirst()
-                    }
-                }
-            }
-        } else {
-            // Draft a goalie
-            let availableGoalies = allAvailableGoalies.filter { !team.hasDrafted($0.playerId ?? -1) }
-            
-            // Take top goalie (they're already sorted by stats)
-            if let selectedGoalie = availableGoalies.first {
-                team.addPlayer(selectedGoalie)
-                
-                // Remove from global available lists
-                allAvailableSkaters.removeAll { $0.playerId == selectedGoalie.playerId }
-                allAvailableGoalies.removeAll { $0.playerId == selectedGoalie.playerId }
-                
-                // Update UI
-                DispatchQueue.main.async {
-                    self.lastCPUPlayer = (team.getName(), selectedGoalie)
-                    self.lastCPUSelections.append((team.getName(), selectedGoalie))
-                    
-                    // Keep only last 10 selections
-                    if self.lastCPUSelections.count > 10 {
-                        self.lastCPUSelections.removeFirst()
-                    }
-                }
-            }
-        }
-    }
 
     // MARK: - Existing Methods (API calls, etc.)
     
