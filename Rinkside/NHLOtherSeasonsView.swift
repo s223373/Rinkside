@@ -179,14 +179,20 @@ struct TournamentRow: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(tournament.seasons.sorted().reversed().prefix(5), id: \.self) { season in
-                            Text(formatSeason(season))
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .foregroundColor(.blue)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.blue.opacity(0.1))
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                            NavigationLink(destination: NHLOtherSeasonsSpecificTopPlayersView(
+                                leagueAbbrev: tournament.name,
+                                season: season
+                            )) {
+                                Text(formatSeason(season))
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.blue)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.blue.opacity(0.1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+                            .buttonStyle(PlainButtonStyle())
                         }
                         
                         if tournament.seasons.count > 5 {
@@ -238,7 +244,8 @@ struct Tournament {
         name.uppercased().contains("JUNIOR") ||
         name.uppercased().contains("IIHF") ||
         name.uppercased().contains("U20") ||
-        name.uppercased().contains("U18")
+        name.uppercased().contains("U18") ||
+        name.uppercased().contains("RUSSIA")
     }
     
     var isNorthAmericanDevelopment: Bool {
@@ -304,7 +311,7 @@ class NHLOtherSeasonsViewModel: ObservableObject {
     
     private let season = "20242025"
     private let gameType = 2
-    private let minimumPlayers = 20
+    private let minimumPlayers = 5 // Lowered from 20 for testing
     
     func loadCommonTournaments() {
         isLoading = true
@@ -346,6 +353,11 @@ class NHLOtherSeasonsViewModel: ObservableObject {
                     self.filteredTournaments = self.commonTournaments
                     self.isLoading = false
                     print("Found \(tournaments.count) common tournaments")
+                    
+                    // Debug: Print found tournaments
+                    for tournament in tournaments.prefix(10) {
+                        print("Tournament: \(tournament.name) - \(tournament.playerCount) players - Seasons: \(tournament.seasons.count)")
+                    }
                 }
             }
         }
@@ -355,14 +367,18 @@ class NHLOtherSeasonsViewModel: ObservableObject {
         let group = DispatchGroup()
         var results = [NHLPlayer]()
         let queue = DispatchQueue(label: "player.fetch.queue", attributes: .concurrent)
-        let semaphore = DispatchSemaphore(value: 10) // Limit concurrent requests
+        let semaphore = DispatchSemaphore(value: 5) // Reduced concurrent requests to avoid rate limiting
         
-        for player in players {
+        // Limit to first 50 players for testing to avoid overwhelming the API
+        let limitedPlayers = Array(players.prefix(50))
+        
+        for player in limitedPlayers {
             group.enter()
             queue.async {
                 semaphore.wait()
                 
                 guard let url = NHLResource.basePlayerLandingURL(for: player.playerId) else {
+                    print("Could not create URL for player \(player.playerId)")
                     semaphore.signal()
                     group.leave()
                     return
@@ -389,6 +405,7 @@ class NHLOtherSeasonsViewModel: ObservableObject {
                         DispatchQueue.main.async {
                             results.append(fullPlayer)
                         }
+                        print("Successfully loaded player: \(fullPlayer.firstName.def ?? "") \(fullPlayer.lastName.def ?? "")")
                     } catch {
                         print("Decode error for player \(player.playerId): \(error)")
                     }
@@ -397,6 +414,7 @@ class NHLOtherSeasonsViewModel: ObservableObject {
         }
         
         group.notify(queue: .main) {
+            print("Completed fetching player data. Total players: \(results.count)")
             completion(results)
         }
     }
@@ -406,46 +424,59 @@ class NHLOtherSeasonsViewModel: ObservableObject {
             var tournamentPlayerCount: [String: Set<Int>] = [:]
             var tournamentSeasons: [String: Set<Int>] = [:]
             
-            // Define leagues/tournaments to include (North American development leagues and major international)
-            let includedLeagues = [
-                "NHL", "AHL", "ECHL", "WHL", "OHL", "QMJHL", "CHL", "USHL", "NAHL", "BCHL",
-                "NCAA", "CCHA", "WCHA", "Hockey East", "ECAC", "Atlantic Hockey", "Big Ten",
-                "KHL", "SHL", "Liiga", "NLA", "DEL", "Extraliga", "SM-liiga",
-                "WJC-20", "WJC-18", "Olympics", "World Championship", "World Cup",
-                "IIHF", "WC", "OG", "WJC", "U20", "U18"
-            ]
+            print("Analyzing tournaments from \(players.count) players...")
             
             for player in players {
+                let playerName = "\(player.firstName.def) \(player.lastName.def)"
+                print("Analyzing player: \(playerName) (ID: \(player.playerId))")
+                
                 // Check all season totals for this player
-                for seasonTotal in player.seasonTotals ?? [] {
-                    // Extract league/tournament name
-                    let leagueName = seasonTotal.leagueAbbrev
+                if let seasonTotals = player.seasonTotals {
+                    print("  Player has \(seasonTotals.count) season totals")
                     
-                    // Skip if league name is empty
-                    guard ((leagueName?.isEmpty) == nil) else { continue }
-                    
-                    // Check if this league should be included
-                    let shouldInclude = includedLeagues.contains { includedLeague in
-                        leagueName?.uppercased().contains(includedLeague.uppercased()) ?? false ||
-                        includedLeague.uppercased().contains(leagueName?.uppercased() ?? "N/A")
+                    for seasonTotal in seasonTotals {
+                        // Extract league/tournament name
+                        guard let leagueName = seasonTotal.leagueAbbrev,
+                              !leagueName.isEmpty,
+                              let season = seasonTotal.season else {
+                            print("  Skipping entry - missing league name or season")
+                            continue
+                        }
+                        
+                        print("  Found league: \(leagueName) for season \(season)")
+                        
+                        // Track players and seasons for this tournament
+                        if tournamentPlayerCount[leagueName] == nil {
+                            tournamentPlayerCount[leagueName] = Set<Int>()
+                            tournamentSeasons[leagueName] = Set<Int>()
+                        }
+                        
+                        tournamentPlayerCount[leagueName]?.insert(player.playerId)
+                        tournamentSeasons[leagueName]?.insert(season)
                     }
-                    
-                    guard shouldInclude else { continue }
-                    
-                    // Track players and seasons for this tournament
-                    if tournamentPlayerCount[leagueName ?? "N/A"] == nil {
-                        tournamentPlayerCount[leagueName ?? "N/A"] = Set<Int>()
-                        tournamentSeasons[leagueName ?? "N/A"] = Set<Int>()
-                    }
-                    
-                    tournamentPlayerCount[leagueName ?? "N/A"]?.insert(player.playerId)
-                    tournamentSeasons[leagueName ?? "N/A"]?.insert(seasonTotal.season ?? -1)
+                } else {
+                    print("  Player has no season totals")
                 }
             }
             
-            // Filter tournaments with at least minimum players
+            print("Tournament analysis complete. Found \(tournamentPlayerCount.count) unique tournaments:")
+            for (name, players) in tournamentPlayerCount.sorted(by: { $0.value.count > $1.value.count }) {
+                print("  \(name): \(players.count) players")
+            }
+            
+            // Filter tournaments with at least minimum players and exclude NHL
             let commonTournaments = tournamentPlayerCount.compactMap { tournamentName, playerSet -> Tournament? in
-                guard playerSet.count >= self.minimumPlayers else { return nil }
+                guard playerSet.count >= self.minimumPlayers,
+                      tournamentName.uppercased() != "NHL" else { // Exclude NHL from "other seasons"
+                    if tournamentName.uppercased() == "NHL" {
+                        print("  Excluding NHL (has \(playerSet.count) players)")
+                    } else {
+                        print("  Excluding \(tournamentName) - only \(playerSet.count) players (minimum: \(self.minimumPlayers))")
+                    }
+                    return nil
+                }
+                
+                print("  Including \(tournamentName) with \(playerSet.count) players")
                 
                 return Tournament(
                     name: tournamentName,
@@ -455,6 +486,10 @@ class NHLOtherSeasonsViewModel: ObservableObject {
             }
             
             DispatchQueue.main.async {
+                print("Returning \(commonTournaments.count) tournaments that meet minimum player threshold")
+                for tournament in commonTournaments {
+                    print("  Final tournament: \(tournament.name) - \(tournament.playerCount) players - \(tournament.seasons.count) seasons")
+                }
                 completion(commonTournaments)
             }
         }
@@ -487,6 +522,7 @@ class NHLOtherSeasonsViewModel: ObservableObject {
                 let result = try decoder.decode(NHLStatsLeadersAPIResponse.self, from: data)
                 let apiStats = self.getSkatersListFromAPI(from: result, for: statType)
                 let skaters = apiStats.map { $0.toNHLPlayerSkaterStats() }
+                print("Loaded \(skaters.count) skaters for stat type: \(statType)")
                 completion(skaters)
             } catch {
                 print("Error decoding skaters: \(error)")
@@ -522,6 +558,7 @@ class NHLOtherSeasonsViewModel: ObservableObject {
                 let result = try decoder.decode(NHLGoalieStatsLeadersAPIResponse.self, from: data)
                 let apiStats = self.getGoaliesListFromAPI(from: result, for: statType)
                 let goalies = apiStats.map { $0.toNHLPlayerSkaterStats() }
+                print("Loaded \(goalies.count) goalies for stat type: \(statType)")
                 completion(goalies)
             } catch {
                 print("Error decoding goalies: \(error)")
